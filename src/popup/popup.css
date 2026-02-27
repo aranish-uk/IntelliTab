@@ -1,0 +1,147 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --bg-primary: #f8f8f8;
+    --bg-secondary: #ffffff;
+    --bg-tertiary: #f0f0f0;
+    --bg-glass: rgba(255, 255, 255, 0.65);
+    --bg-glass-hover: rgba(255, 255, 255, 0.85);
+    --border-glass: rgba(200, 200, 200, 0.4);
+    --border-subtle: rgba(0, 0, 0, 0.06);
+    --text-primary: #1a1a1a;
+    --text-secondary: #555555;
+    --text-tertiary: #888888;
+    --text-muted: #aaaaaa;
+    --accent: #333333;
+    --accent-hover: #1a1a1a;
+    --accent-soft: rgba(0, 0, 0, 0.06);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.04);
+    --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.06);
+    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.08);
+    --ring-focus: rgba(100, 100, 100, 0.3);
+    --danger: #dc2626;
+    --danger-bg: #fef2f2;
+    --success: #16a34a;
+    --success-bg: #f0fdf4;
+    --spinner-track: rgba(0, 0, 0, 0.08);
+    --spinner-fill: #333;
+    --badge-bg: rgba(0, 0, 0, 0.06);
+    --badge-text: #555;
+    --code-bg: #1a1a1a;
+    --code-text: #ccc;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg-primary: #111111;
+      --bg-secondary: #1a1a1a;
+      --bg-tertiary: #252525;
+      --bg-glass: rgba(30, 30, 30, 0.75);
+      --bg-glass-hover: rgba(45, 45, 45, 0.9);
+      --border-glass: rgba(255, 255, 255, 0.1);
+      --border-subtle: rgba(255, 255, 255, 0.08);
+      --text-primary: #f0f0f0;
+      --text-secondary: #c0c0c0;
+      --text-tertiary: #909090;
+      --text-muted: #666666;
+      --accent: #f0f0f0;
+      --accent-hover: #ffffff;
+      --accent-soft: rgba(255, 255, 255, 0.08);
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+      --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+      --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.5);
+      --ring-focus: rgba(200, 200, 200, 0.25);
+      --danger: #f87171;
+      --danger-bg: #2d1515;
+      --success: #4ade80;
+      --success-bg: #152d1b;
+      --spinner-track: rgba(255, 255, 255, 0.15);
+      --spinner-fill: #e0e0e0;
+      --badge-bg: rgba(255, 255, 255, 0.1);
+      --badge-text: #c0c0c0;
+      --code-bg: #0a0a0a;
+      --code-text: #b0b0b0;
+    }
+  }
+
+  body {
+    @apply m-0 p-0 antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+  }
+}
+
+/* Glass card */
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-glass);
+}
+
+.glass-card-solid {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-glass);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Inputs */
+.themed-input {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-glass);
+  color: var(--text-primary);
+  transition: all 0.2s ease;
+}
+
+.themed-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--ring-focus);
+  border-color: transparent;
+}
+
+.themed-input::placeholder {
+  color: var(--text-muted);
+}
+
+/* Primary button */
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg-primary);
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+/* Ghost button */
+.btn-ghost {
+  background: var(--accent-soft);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+}
+
+.btn-ghost:hover {
+  background: var(--bg-glass-hover);
+  color: var(--text-primary);
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 4px;
+}
