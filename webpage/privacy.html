@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Privacy Policy – IntelliTab</title>
+    <meta name="description"
+        content="IntelliTab Privacy Policy. We collect no personal data. Your information stays on your device." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="icon" type="image/png" href="icon-48.png" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <nav>
+        <div class="nav-inner">
+            <a href="index.html" class="logo">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                IntelliTab
+            </a>
+            <div class="nav-links">
+                <a href="index.html#features">Features</a>
+                <a href="index.html#how">How it works</a>
+                <a href="privacy.html">Privacy</a>
+                <a href="tos.html">Terms</a>
+            </div>
+            <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                class="cta-btn nav-cta" target="_blank" rel="noopener">Add to Chrome</a>
+        </div>
+    </nav>
+
+    <main class="inner-page">
+        <div class="section-label">Legal</div>
+        <h1>Privacy Policy</h1>
+        <p class="updated">Last updated: February 26, 2026</p>
+
+        <div class="callout">
+            <strong>Short version:</strong> IntelliTab collects absolutely no personal data. Everything stays on your
+            device. The only external communication is the AI API calls you explicitly trigger using <em>your own</em>
+            API key.
+        </div>
+
+        <h2>1. Who We Are</h2>
+        <p>IntelliTab is a Chrome browser extension. It is provided as-is, free of charge, with no account creation
+            required.</p>
+
+        <h2>2. What We Do Not Collect</h2>
+        <p>IntelliTab does <strong>not</strong> collect, transmit, store, or sell any of the following:</p>
+        <ul>
+            <li>Your name, email address, or any personal identifiers</li>
+            <li>Your browsing history or tab URLs</li>
+            <li>Your Groq API key</li>
+            <li>Your learned patterns, SOUL.md content, or tab grouping rules</li>
+            <li>Crash reports, analytics, or usage telemetry</li>
+        </ul>
+
+        <h2>3. What Stays on Your Device</h2>
+        <p>All IntelliTab data is stored exclusively in your browser's local storage
+            (<code>chrome.storage.local</code>), including:</p>
+        <ul>
+            <li>Your Groq API key</li>
+            <li>Your SOUL.md behavioral instructions</li>
+            <li>Your learned domain-to-group patterns</li>
+            <li>Custom grouping rules</li>
+            <li>Last action context</li>
+        </ul>
+        <p>This data never leaves your browser except as part of the Groq API calls described below.</p>
+
+        <h2>4. Third-Party AI Processing (Groq)</h2>
+        <p>When you click "Analyze Tabs" or submit AI feedback, IntelliTab sends limited tab metadata (tab titles, URLs,
+            and domains) to the <strong>Groq API</strong> using your own, personally provided API key.</p>
+        <div class="callout">
+            ⚠️ <strong>Important:</strong> IntelliTab has no control over, and takes no responsibility for, how Groq
+            processes the data it receives. It is your responsibility as the API key holder to review and understand <a
+                href="https://groq.com/privacy-policy" target="_blank" rel="noopener">Groq's Privacy Policy</a> and
+            their data practices. By using IntelliTab, you acknowledge that you are voluntarily authorizing Groq API
+            calls using your own key and that Groq is a separate third party operating under their own terms.
+        </div>
+
+        <h2>5. Permissions Explained</h2>
+        <p>IntelliTab requests the following Chrome permissions:</p>
+        <ul>
+            <li><strong>tabs</strong> – To read open tab titles and URLs for AI classification.</li>
+            <li><strong>tabGroups</strong> – To create and manage Chrome tab groups.</li>
+            <li><strong>storage</strong> – To save your settings and learned patterns locally.</li>
+            <li><strong>host_permissions (&lt;all_urls&gt;)</strong> – Required to read tab URLs for classification.
+                This does not allow us to inject scripts or read page content.</li>
+        </ul>
+
+        <h2>6. Children's Privacy</h2>
+        <p>IntelliTab is not directed at children under 13. We do not knowingly collect any information from children.
+        </p>
+
+        <h2>7. Changes to This Policy</h2>
+        <p>If we update this policy, we will revise the date at the top of this page. Continued use of IntelliTab after
+            any changes constitutes your acceptance of the revised policy.</p>
+
+        <h2>8. Contact</h2>
+        <p>For privacy questions, open an issue on our GitHub repository or contact us via the Chrome Web Store listing.
+        </p>
+    </main>
+
+    <footer>
+        <div class="footer-inner">
+            <div class="footer-logo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                IntelliTab
+            </div>
+            <div class="footer-links">
+                <a href="privacy.html">Privacy Policy</a>
+                <a href="tos.html">Terms of Service</a>
+                <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                    target="_blank" rel="noopener">Chrome Web Store</a>
+            </div>
+            <p class="footer-copy">© 2026 IntelliTab. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+
+</html>

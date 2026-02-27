@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>IntelliTab – AI Tab Organizer for Chrome</title>
+    <meta name="description"
+        content="IntelliTab uses AI to automatically sort and group your browser tabs. Stop losing focus. One click, clean workspace." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet" />
+    <link rel="icon" type="image/png" href="icon-48.png" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+
+    <!-- Nav -->
+    <nav>
+        <div class="nav-inner">
+            <div class="logo">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                    <path d="M5 3v4" />
+                    <path d="M19 17v4" />
+                    <path d="M3 5h4" />
+                    <path d="M17 19h4" />
+                </svg>
+                IntelliTab
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#how">How it works</a>
+                <a href="privacy.html">Privacy</a>
+                <a href="tos.html">Terms</a>
+            </div>
+            <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                class="cta-btn nav-cta" target="_blank" rel="noopener">Add to Chrome — Free</a>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="hero-badge">Powered by Llama 3.3 70B via Groq ⚡</div>
+        <h1>Your tabs are a mess.<br /><span class="gradient-text">Let AI fix that.</span></h1>
+        <p class="hero-sub">IntelliTab automatically groups and labels your browser tabs by context — Dev, Study, Work,
+            Entertainment and more — so you can think clearly and move fast.</p>
+        <div class="hero-actions">
+            <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                class="cta-btn" target="_blank" rel="noopener">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                        d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.09 17.09l-5-5 1.41-1.41 3.59 3.58 7.59-7.59 1.41 1.42-9 9z" />
+                </svg>
+                Add to Chrome — Free
+            </a>
+            <a href="#how" class="ghost-btn">See how it works →</a>
+        </div>
+        <div class="hero-visual">
+            <div class="browser-mock">
+                <div class="browser-top">
+                    <div class="dot r"></div>
+                    <div class="dot y"></div>
+                    <div class="dot g"></div>
+                    <div class="browser-url">chrome://newtab</div>
+                </div>
+                <div class="tab-groups-demo">
+                    <div class="tab-group" style="--c: #666">
+                        <div class="group-label">💻 Dev</div>
+                        <div class="tab-pill">github.com</div>
+                        <div class="tab-pill">vercel.com</div>
+                        <div class="tab-pill">localhost:3000</div>
+                    </div>
+                    <div class="tab-group" style="--c: #555">
+                        <div class="group-label">📚 Study</div>
+                        <div class="tab-pill">canvas.asu.edu</div>
+                        <div class="tab-pill">docs.google.com</div>
+                    </div>
+                    <div class="tab-group" style="--c: #444">
+                        <div class="group-label">📈 Markets</div>
+                        <div class="tab-pill">tradingview.com</div>
+                        <div class="tab-pill">kalshi.com</div>
+                    </div>
+                    <div class="tab-group" style="--c: #333">
+                        <div class="group-label">🎬 Entertainment</div>
+                        <div class="tab-pill">youtube.com</div>
+                        <div class="tab-pill">twitch.tv</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+        <div class="section-label">Features</div>
+        <h2>Everything your browser was missing</h2>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🧠</div>
+                <h3>AI-Powered Grouping</h3>
+                <p>Uses Llama 3.3 70B to understand the topic and intent of every tab you have open, then assigns them
+                    to clean, descriptive groups.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📏</div>
+                <h3>Rules Engine</h3>
+                <p>Set permanent, deterministic rules. Ensure GitHub always goes to "Dev" or Gmail always lands in
+                    "Communication" — no guesswork required.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔁</div>
+                <h3>Adaptive Learning</h3>
+                <p>IntelliTab tracks your manual grouping habits and builds a local preference profile that makes the AI
+                    smarter over time.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">💬</div>
+                <h3>Feedback Chat</h3>
+                <p>Unhappy with a decision? Chat directly with the AI to explain what it got wrong. It listens, adjusts,
+                    and improves in real-time.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔒</div>
+                <h3>Privacy by Design</h3>
+                <p>IntelliTab uses your own Groq API key and stores all settings locally in your browser. We collect
+                    zero data. Nothing leaves your machine besides the Groq API calls you initiate.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎨</div>
+                <h3>System-Native UI</h3>
+                <p>Beautifully designed with an automatic light and dark mode that mirrors your OS preferences.
+                    Glassmorphism, clean type, zero clutter.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="how" id="how">
+        <div class="section-label">How it works</div>
+        <h2>Three steps to a cleaner browser</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-num">01</div>
+                <div class="step-content">
+                    <h3>Get a free Groq API Key</h3>
+                    <p>Sign up at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>
+                        and generate a free API key. IntelliTab uses this to run the AI — your key, your data.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">02</div>
+                <div class="step-content">
+                    <h3>Add it to Chrome &amp; set your key</h3>
+                    <p>Install IntelliTab from the Chrome Web Store, open the Options page, and paste your key. You're
+                        ready in under 60 seconds.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">03</div>
+                <div class="step-content">
+                    <h3>Click "Analyze Tabs"</h3>
+                    <p>Open the extension popup and hit the button. IntelliTab will classify all your open tabs and show
+                        you a preview before applying any changes.</p>
+                </div>
+            </div>
+        </div>
+        <div class="center-cta">
+            <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                class="cta-btn" target="_blank" rel="noopener">Add to Chrome — Free</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-inner">
+            <div class="footer-logo">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round">
+                    <path
+                        d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                </svg>
+                IntelliTab
+            </div>
+            <div class="footer-links">
+                <a href="privacy.html">Privacy Policy</a>
+                <a href="tos.html">Terms of Service</a>
+                <a href="https://chromewebstore.google.com/detail/intellitab/ghlhddblhinadkckdgedbjcbeenlomig"
+                    target="_blank" rel="noopener">Chrome Web Store</a>
+            </div>
+            <p class="footer-copy">© 2026 IntelliTab. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
