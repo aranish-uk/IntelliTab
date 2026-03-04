@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, Save, CheckCircle2, Settings } from 'lucide-react';
-import { GroqResponse } from '../types';
+import { AIResponse } from '../types';
 
 export default function Popup() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    const [result, setResult] = useState<GroqResponse | null>(null);
+    const [result, setResult] = useState<AIResponse | null>(null);
     const [activeTab, setActiveTab] = useState<'organize' | 'rules'>('organize');
     const [rulesSource, setRulesSource] = useState('[]');
     const [saveStatus, setSaveStatus] = useState('');
@@ -29,8 +29,8 @@ export default function Popup() {
             }
             if (response && response.error) {
                 setError(response.error);
-                if (response.error.includes("Groq API Key")) {
-                    setError("Please set your Groq API Key in the Options page.");
+                if (response.error.toLowerCase().includes("api key")) {
+                    setError("Please set your API Key in the Options page.");
                 }
             } else if (response) {
                 setResult(response);
@@ -118,9 +118,9 @@ export default function Popup() {
             </div>
 
             {/* Main Content */}
-            <main className="flex-1 overflow-hidden p-5 flex flex-col items-center">
+            <main className="flex-1 overflow-y-auto p-5 flex flex-col items-center">
                 {activeTab === 'organize' ? (
-                    <div className="w-full flex-1 flex flex-col" style={{ height: '100%' }}>
+                    <div className="w-full flex-1 flex flex-col">
                         {!result && !loading && (
                             <div className="my-auto text-center flex flex-col items-center justify-center gap-5">
                                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'var(--accent-soft)' }}>

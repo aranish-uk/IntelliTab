@@ -14,7 +14,23 @@ export interface Rule {
     description?: string;
 }
 
-export interface GroqResponse {
+export type AIProvider = 'openai' | 'gemini' | 'claude' | 'groq' | 'openrouter' | 'custom';
+
+export interface AIProviderConfig {
+    apiKey: string;
+    baseUrl?: string;
+    model: string;
+}
+
+export interface AIConfig {
+    provider: AIProvider;
+    apiKey: string;
+    baseUrl?: string;
+    model: string;
+    savedConfigs?: Partial<Record<AIProvider, AIProviderConfig>>;
+}
+
+export interface AIResponse {
     groups: {
         groupName: string;
         tabIds: number[];

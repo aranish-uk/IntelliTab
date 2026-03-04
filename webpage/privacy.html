@@ -45,7 +45,7 @@
         <div class="callout">
             <strong>Short version:</strong> IntelliTab collects absolutely no personal data. Everything stays on your
             device. The only external communication is the AI API calls you explicitly trigger using <em>your own</em>
-            API key.
+            API keys.
         </div>
 
         <h2>1. Who We Are</h2>
@@ -57,7 +57,7 @@
         <ul>
             <li>Your name, email address, or any personal identifiers</li>
             <li>Your browsing history or tab URLs</li>
-            <li>Your Groq API key</li>
+            <li>Your AI API keys</li>
             <li>Your learned patterns, SOUL.md content, or tab grouping rules</li>
             <li>Crash reports, analytics, or usage telemetry</li>
         </ul>
@@ -66,23 +66,24 @@
         <p>All IntelliTab data is stored exclusively in your browser's local storage
             (<code>chrome.storage.local</code>), including:</p>
         <ul>
-            <li>Your Groq API key</li>
+            <li>Your AI API keys</li>
             <li>Your SOUL.md behavioral instructions</li>
             <li>Your learned domain-to-group patterns</li>
             <li>Custom grouping rules</li>
             <li>Last action context</li>
         </ul>
-        <p>This data never leaves your browser except as part of the Groq API calls described below.</p>
+        <p>This data never leaves your browser except as part of the AI API calls described below.</p>
 
-        <h2>4. Third-Party AI Processing (Groq)</h2>
+        <h2>4. Third-Party AI Processing</h2>
         <p>When you click "Analyze Tabs" or submit AI feedback, IntelliTab sends limited tab metadata (tab titles, URLs,
-            and domains) to the <strong>Groq API</strong> using your own, personally provided API key.</p>
+            and domains) to the <strong>AI Provider</strong> of your choice (e.g., Groq, Google, OpenAI, Anthropic)
+            using your own, personally provided API key.</p>
         <div class="callout">
-            ⚠️ <strong>Important:</strong> IntelliTab has no control over, and takes no responsibility for, how Groq
-            processes the data it receives. It is your responsibility as the API key holder to review and understand <a
-                href="https://groq.com/privacy-policy" target="_blank" rel="noopener">Groq's Privacy Policy</a> and
-            their data practices. By using IntelliTab, you acknowledge that you are voluntarily authorizing Groq API
-            calls using your own key and that Groq is a separate third party operating under their own terms.
+            ⚠️ <strong>Important:</strong> IntelliTab has no control over, and takes no responsibility for, how your
+            chosen AI Provider processes the data it receives. It is your responsibility as the API key holder to review
+            and understand the privacy policy and data practices of your selected provider (e.g., Groq, Google, OpenAI,
+            or Anthropic). By using IntelliTab, you acknowledge that you are voluntarily authorizing AI API
+            calls using your own key and that the provider is a separate third party operating under their own terms.
         </div>
 
         <h2>5. Permissions Explained</h2>

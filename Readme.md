@@ -8,11 +8,12 @@ IntelliTab is a next-generation tab manager that uses advanced Large Language Mo
 
 ### 🧠 Key Features
 
-- **Inteligent Auto-Grouping**: Powered by the Groq Llama 3.3 70B model, IntelliTab analyzes the content and context of your open tabs to create logical, beautifully named groups (e.g., "Dev - Frontend", "Study - CS511", "Communication").
-- **Deterministic Rules Engine**: Set "Always Group" or "Protect" rules for specific domains. Ensure Gmail always goes to "Communication" or GitHub always lands in "Dev" without the AI having to guess.
+- **Multi-Model Intelligence**: Choose your favorite librarian. Support for **Gemini, Claude, OpenAI, Groq, and OpenRouter**. Plug in your own API key and use the model that works best for you.
+- **Inteligent Auto-Grouping**: Analyzes the content and context of your open tabs to create logical, beautifully named groups (e.g., "Dev - Frontend", "Study - CS511", "Communication").
+- **Deterministic Rules Engine**: Set permanent rules for specific domains. Ensure Gmail always goes to "Communication" or GitHub always lands in "Dev" without the AI having to guess.
 - **Adaptive Learning Engine**: The more you use it, the smarter it gets. IntelliTab tracks your manual grouping habits and builds a local profile of your preferences.
-- **AI Feedback Chat**: Not happy with a grouping decision? Talk to the AI. Use the built-in feedback loop to explain your preferences and "retrain" the system's behavior in real-time.
-- **Privacy-First Design**: Your tab data is processed securely via your own Groq API key. Your grouping habits, "SOUL" instructions, and history are stored locally in your browser—never on our servers.
+- **AI Feedback Chat**: Not happy with a decision? Talk to the AI. Use the built-in feedback loop to explain your preferences and "retrain" the system's behavior in real-time.
+- **Privacy-First Design**: Your data, your keys. API keys are stored locally and calls are made directly from your browser. We collect zero data.
 - **Modern Grayscale Aesthetic**: A premium, minimal UI featuring glassmorphism and automatic light/dark mode support that feels like a native part of your OS.
 
 ### 🚀 Why IntelliTab?
@@ -22,7 +23,7 @@ Standard tab managers require constant manual effort. IntelliTab is designed to 
 ### 🛠️ Quick Start
 
 1. Install the extension.
-2. Enter your Groq API Key in the Options page (Free tier available at console.groq.com).
+2. Select your AI Provider (Gemini, Claude, OpenAI, or Groq) in the Options page and enter your API Key.
 3. Click **"Analyze Tabs"** and watch the magic happen.
 4. Use the **"Ungroup All"** button to reset and refine your rules at any time.
 

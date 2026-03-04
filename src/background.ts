@@ -1,18 +1,43 @@
-import { classifyTabs, processFeedback } from './lib/groqClient';
+import { classifyTabs, processFeedback } from './lib/aiClient';
 import { getRules } from './lib/rulesEngine';
 import { getLearnedPatterns, getSoulText, logManualGrouping, saveLearnedPatterns, saveSoulText } from './lib/learningEngine';
-import { TabInfo, LastAction } from './types';
+import { TabInfo, LastAction, AIConfig } from './types';
 
 // Run on installation
 chrome.runtime.onInstalled.addListener(() => {
     chrome.runtime.openOptionsPage();
+    // Initialize default config if not present
+    chrome.storage.local.get(['aiConfig', 'groqApiKey'], (result) => {
+        if (!result.aiConfig) {
+            const defaultConfig: AIConfig = {
+                provider: 'groq',
+                apiKey: result.groqApiKey || '',
+                model: 'llama-3.3-70b-versatile'
+            };
+            chrome.storage.local.set({ aiConfig: defaultConfig });
+        }
+    });
 });
+
+async function getAIConfig(): Promise<AIConfig> {
+    const result = await chrome.storage.local.get(['aiConfig', 'groqApiKey']);
+    if (result.aiConfig) return result.aiConfig;
+
+    // Migration logic
+    const config: AIConfig = {
+        provider: 'groq',
+        apiKey: result.groqApiKey || '',
+        model: 'llama-3.3-70b-versatile'
+    };
+    await chrome.storage.local.set({ aiConfig: config });
+    return config;
+}
 
 // A command handler for messages from the popup
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === 'analyzeTabs') {
         handleAnalyzeTabs().then(sendResponse).catch(err => sendResponse({ error: err.message }));
-        return true; // indicates asynchronous response
+        return true;
     }
     if (request.action === 'groupTabs') {
         const fullTabsData = request.groups.map(async (g: any) => {
@@ -91,15 +116,13 @@ async function handleAnalyzeTabs() {
     const rules = await getRules();
     const learnedPatterns = await getLearnedPatterns();
     const soulText = await getSoulText();
+    const aiConfig = await getAIConfig();
 
-    const storage = await chrome.storage.local.get(['groqApiKey']);
-    const apiKey = storage.groqApiKey;
-
-    if (!apiKey) {
-        throw new Error('Groq API Key is not set.');
+    if (!aiConfig.apiKey) {
+        throw new Error(`${aiConfig.provider.toUpperCase()} API Key is not set.`);
     }
 
-    const result = await classifyTabs(tabInfos, rules, apiKey, soulText, learnedPatterns);
+    const result = await classifyTabs(tabInfos, rules, aiConfig, soulText, learnedPatterns);
     return result;
 }
 
@@ -107,7 +130,6 @@ async function handleGroupTabs(groups: { groupName: string, tabIds: number[] }[]
     for (const group of groups) {
         if (group.tabIds.length > 0) {
             const groupId = await chrome.tabs.group({ tabIds: group.tabIds });
-            // Apply title and state to fix Chrome visual bugs
             await chrome.tabGroups.update(groupId, { title: group.groupName, collapsed: false });
         }
     }
@@ -115,9 +137,10 @@ async function handleGroupTabs(groups: { groupName: string, tabIds: number[] }[]
 }
 
 async function handleProcessFeedback(chatLog: { sender: 'user' | 'ai', message: string }[]) {
-    const storage = await chrome.storage.local.get(['groqApiKey', 'lastAction']);
-    const apiKey = storage.groqApiKey;
-    if (!apiKey) throw new Error('Groq API Key is not set.');
+    const storage = await chrome.storage.local.get(['lastAction']);
+    const aiConfig = await getAIConfig();
+
+    if (!aiConfig.apiKey) throw new Error(`${aiConfig.provider.toUpperCase()} API Key is not set.`);
 
     const soulText = await getSoulText();
     const learnedPatterns = await getLearnedPatterns();
@@ -129,12 +152,11 @@ async function handleProcessFeedback(chatLog: { sender: 'user' | 'ai', message: 
         closeRecommendations: 0
     };
 
-    const response = await processFeedback(chatLog, lastAction, soulText, learnedPatterns, apiKey);
+    const response = await processFeedback(chatLog, lastAction, soulText, learnedPatterns, aiConfig);
 
     // Save updated items back to local storage automatically
     if (response.updatedSoul) await saveSoulText(response.updatedSoul);
 
-    // Merge patterns if valid
     if (response.updatedPatterns && typeof response.updatedPatterns === 'object') {
         const mergedPatterns = { ...learnedPatterns };
         for (const [domain, groups] of Object.entries(response.updatedPatterns)) {
