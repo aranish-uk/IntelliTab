@@ -9,6 +9,7 @@ export default function Popup() {
     const [activeTab, setActiveTab] = useState<'organize' | 'rules'>('organize');
     const [rulesSource, setRulesSource] = useState('[]');
     const [saveStatus, setSaveStatus] = useState('');
+    const [ungroupedOnly, setUngroupedOnly] = useState(false);
 
     useEffect(() => {
         chrome.storage.local.get(['rules'], (data) => {
@@ -22,7 +23,7 @@ export default function Popup() {
         setLoading(true);
         setError('');
         setResult(null);
-        chrome.runtime.sendMessage({ action: 'analyzeTabs' }, (response) => {
+        chrome.runtime.sendMessage({ action: 'analyzeTabs', ungroupedOnly }, (response) => {
             setLoading(false);
             if (chrome.runtime.lastError) {
                 console.error(chrome.runtime.lastError);
@@ -132,6 +133,19 @@ export default function Popup() {
                                         Let AI analyze and sort your open tabs into logical groups.
                                     </p>
                                 </div>
+
+                                <label className="flex items-center justify-center gap-2 mt-2 mb-1 px-1 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={ungroupedOnly}
+                                        onChange={(e) => setUngroupedOnly(e.target.checked)}
+                                        className="w-3.5 h-3.5 rounded-sm border-gray-400 bg-transparent"
+                                    />
+                                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                        Only organize ungrouped tabs
+                                    </span>
+                                </label>
+
                                 <div className="flex flex-col gap-2 w-full">
                                     <button
                                         onClick={analyzeTabs}
@@ -140,6 +154,7 @@ export default function Popup() {
                                         <Sparkles className="w-4 h-4" />
                                         Analyze Tabs
                                     </button>
+
                                     <button
                                         onClick={() => chrome.runtime.sendMessage({ action: 'ungroupAll' })}
                                         className="btn-ghost w-full py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-1"

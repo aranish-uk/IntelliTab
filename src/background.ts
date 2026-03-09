@@ -1,7 +1,7 @@
 import { classifyTabs, processFeedback } from './lib/aiClient';
 import { getRules } from './lib/rulesEngine';
 import { getLearnedPatterns, getSoulText, logManualGrouping, saveLearnedPatterns, saveSoulText } from './lib/learningEngine';
-import { TabInfo, LastAction, AIConfig } from './types';
+import { TabInfo, LastAction, AIConfig, GroupConfig } from './types';
 
 // Run on installation
 chrome.runtime.onInstalled.addListener(() => {
@@ -36,7 +36,7 @@ async function getAIConfig(): Promise<AIConfig> {
 // A command handler for messages from the popup
 chrome.runtime.onMessage.addListener((request, _sender, sendResponse) => {
     if (request.action === 'analyzeTabs') {
-        handleAnalyzeTabs().then(sendResponse).catch(err => sendResponse({ error: err.message }));
+        handleAnalyzeTabs(request.ungroupedOnly).then(sendResponse).catch(err => sendResponse({ error: err.message }));
         return true;
     }
     if (request.action === 'groupTabs') {
@@ -103,15 +103,48 @@ chrome.tabGroups.onUpdated.addListener(async (group) => {
     }
 });
 
-async function handleAnalyzeTabs() {
+async function handleAnalyzeTabs(ungroupedOnly?: boolean) {
     const tabs = await chrome.tabs.query({ currentWindow: true });
-    const tabInfos: TabInfo[] = tabs.map(t => ({
+    let tabInfos: TabInfo[] = tabs.map(t => ({
         id: t.id!,
         url: t.url || '',
         title: t.title || '',
         domain: t.url ? new URL(t.url).hostname : '',
+        groupId: t.groupId,
         lastAccessed: (t as any).lastAccessed || Date.now()
     }));
+
+    if (ungroupedOnly && chrome.tabGroups) {
+        tabInfos = tabInfos.filter(t => t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE || t.groupId === undefined || t.groupId === -1);
+    }
+
+    const groupConfigsResult = await chrome.storage.local.get(['groupConfigs']);
+    const groupConfigs: GroupConfig[] = groupConfigsResult.groupConfigs || [
+        { name: 'Dev', permission: 'editable' },
+        { name: 'Study', permission: 'editable' },
+        { name: 'Entertainment', permission: 'editable' },
+        { name: 'Communication', permission: 'editable' }
+    ];
+
+    let existingGroupsMap: Record<number, string> = {};
+    if (chrome.tabGroups) {
+        const existingGroups = await chrome.tabGroups.query({ windowId: chrome.windows.WINDOW_ID_CURRENT });
+        existingGroupsMap = existingGroups.reduce((acc, g) => {
+            acc[g.id] = g.title || '';
+            return acc;
+        }, {} as Record<number, string>);
+    }
+
+    tabInfos = tabInfos.filter(t => {
+        if (t.groupId !== undefined && t.groupId !== chrome.tabGroups.TAB_GROUP_ID_NONE && t.groupId !== -1) {
+            const groupName = existingGroupsMap[t.groupId];
+            const config = groupConfigs.find(c => c.name === groupName);
+            if (config && (config.permission === 'locked' || config.permission === 'append_only')) {
+                return false;
+            }
+        }
+        return true;
+    });
 
     const rules = await getRules();
     const learnedPatterns = await getLearnedPatterns();
@@ -122,7 +155,7 @@ async function handleAnalyzeTabs() {
         throw new Error(`${aiConfig.provider.toUpperCase()} API Key is not set.`);
     }
 
-    const result = await classifyTabs(tabInfos, rules, aiConfig, soulText, learnedPatterns);
+    const result = await classifyTabs(tabInfos, rules, aiConfig, soulText, learnedPatterns, groupConfigs);
     return result;
 }
 

@@ -1,4 +1,4 @@
-import { TabInfo, Rule, AIResponse, LearnedPattern, AIConfig, LastAction, FeedbackResponse } from '../types';
+import { TabInfo, Rule, AIResponse, LearnedPattern, AIConfig, LastAction, FeedbackResponse, GroupConfig } from '../types';
 
 const getBaseUrl = (config: AIConfig): string => {
     if (config.baseUrl) return config.baseUrl;
@@ -40,7 +40,8 @@ export const classifyTabs = async (
     rules: Rule[],
     config: AIConfig,
     soulText: string,
-    learnedPatterns: LearnedPattern
+    learnedPatterns: LearnedPattern,
+    groupConfigs: GroupConfig[]
 ): Promise<AIResponse> => {
     if (!config.apiKey) {
         throw new Error(`${config.provider.toUpperCase()} API Key is missing. Please set it in the options page.`);
@@ -93,6 +94,14 @@ export const classifyTabs = async (
             return acc;
         }, {} as LearnedPattern);
 
+    const allowedGroups = groupConfigs
+        .filter(c => c.permission === 'editable' || c.permission === 'append_only')
+        .map(c => c.name);
+
+    const customGroupsPrompt = allowedGroups.length > 0
+        ? `- Use ONLY the following exact category names: ${allowedGroups.map(g => `"${g}"`).join(', ')}. Do NOT invent new categories.`
+        : `- Use ONLY the category names from the SOUL naming convention. Do NOT invent new categories.`;
+
     const systemPrompt = `You are an AI tab organizer.
 
 === CORE TRUTH (SOUL) ===
@@ -108,7 +117,7 @@ Requirements:
 - Classify ONLY the unresolved tabs listed in the user message below.
 - Use the tab "idx" field (a simple integer) as the identifier. Return these idx values in "tabIds".
 - Place each idx in exactly ONE group. Do not duplicate. Do not skip any.
-- Use ONLY the category names from the SOUL naming convention. Do NOT invent new categories.
+${customGroupsPrompt}
 - Return ONLY valid JSON. No markdown wrapping.
 
 Schema:

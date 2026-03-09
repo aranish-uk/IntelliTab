@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database } from 'lucide-react';
+import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database, X, LayoutGrid } from 'lucide-react';
 import { getLearnedPatterns, getSoulText, saveLearnedPatterns, saveSoulText } from '../lib/learningEngine';
-import { LastAction, AIConfig, AIProvider } from '../types';
+import { LastAction, AIConfig, AIProvider, GroupConfig, GroupPermission } from '../types';
 
 const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> = {
     openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -13,7 +13,7 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> 
 };
 
 export default function Options() {
-    const [activeTab, setActiveTab] = useState<'model' | 'feedback' | 'advanced'>('model');
+    const [activeTab, setActiveTab] = useState<'model' | 'groups' | 'feedback' | 'advanced'>('model');
     const [aiConfig, setAIConfig] = useState<AIConfig>({
         provider: 'groq',
         apiKey: '',
@@ -31,8 +31,16 @@ export default function Options() {
     const [chatLoading, setChatLoading] = useState(false);
     const [lastAction, setLastAction] = useState<LastAction | null>(null);
 
+    const [groupConfigs, setGroupConfigs] = useState<GroupConfig[]>([
+        { name: 'Dev', permission: 'editable' },
+        { name: 'Study', permission: 'editable' },
+        { name: 'Entertainment', permission: 'editable' },
+        { name: 'Communication', permission: 'editable' }
+    ]);
+    const [newGroupName, setNewGroupName] = useState('');
+
     useEffect(() => {
-        chrome.storage.local.get(['aiConfig', 'groqApiKey', 'lastAction'], (result) => {
+        chrome.storage.local.get(['aiConfig', 'groqApiKey', 'lastAction', 'groupConfigs'], (result) => {
             if (result.aiConfig) {
                 // Ensure savedConfigs exists
                 const config = { ...result.aiConfig, savedConfigs: result.aiConfig.savedConfigs || {} };
@@ -56,6 +64,35 @@ export default function Options() {
                 chrome.storage.local.set({ aiConfig: initialConfig });
             }
             if (result.lastAction) setLastAction(result.lastAction);
+
+            let currentGroupConfigs = result.groupConfigs || [
+                { name: 'Dev', permission: 'editable' },
+                { name: 'Study', permission: 'editable' },
+                { name: 'Entertainment', permission: 'editable' },
+                { name: 'Communication', permission: 'editable' }
+            ];
+
+            // Fetch currently open groups and add them if they don't exist
+            if (chrome.tabGroups) {
+                chrome.tabGroups.query({}, (groups) => {
+                    const openGroupNames = Array.from(new Set(groups.map(g => g.title).filter(Boolean))) as string[];
+                    let updated = false;
+                    for (const name of openGroupNames) {
+                        if (name && !currentGroupConfigs.some((g: GroupConfig) => g.name === name)) {
+                            currentGroupConfigs.push({ name, permission: 'editable' });
+                            updated = true;
+                        }
+                    }
+                    if (updated && !result.groupConfigs) {
+                        chrome.storage.local.set({ groupConfigs: currentGroupConfigs });
+                    } else if (updated) {
+                        chrome.storage.local.set({ groupConfigs: currentGroupConfigs });
+                    }
+                    setGroupConfigs(currentGroupConfigs);
+                });
+            } else {
+                setGroupConfigs(currentGroupConfigs);
+            }
         });
 
         const loadData = async () => {
@@ -116,6 +153,43 @@ export default function Options() {
         await saveSoulText(soulText);
         setLearningStatus('SOUL updated!');
         setTimeout(() => setLearningStatus(''), 3000);
+    };
+
+    const handleAddGroup = () => {
+        if (!newGroupName.trim()) return;
+        if (groupConfigs.some(g => g.name.toLowerCase() === newGroupName.trim().toLowerCase())) return;
+        const updated = [...groupConfigs, { name: newGroupName.trim(), permission: 'editable' as GroupPermission }];
+        setGroupConfigs(updated);
+        setNewGroupName('');
+        chrome.storage.local.set({ groupConfigs: updated });
+    };
+
+    const handleRemoveGroup = (name: string) => {
+        const updated = groupConfigs.filter(g => g.name !== name);
+        setGroupConfigs(updated);
+        chrome.storage.local.set({ groupConfigs: updated });
+    };
+
+    const handleUpdatePermission = (name: string, permission: GroupPermission) => {
+        const updated = groupConfigs.map(g => g.name === name ? { ...g, permission } : g);
+        setGroupConfigs(updated);
+        chrome.storage.local.set({ groupConfigs: updated });
+    };
+
+    const onDragStart = (e: React.DragEvent, groupName: string) => {
+        e.dataTransfer.setData('groupName', groupName);
+    };
+
+    const onDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+    };
+
+    const onDrop = (e: React.DragEvent, newPermission: GroupPermission) => {
+        e.preventDefault();
+        const groupName = e.dataTransfer.getData('groupName');
+        if (groupName) {
+            handleUpdatePermission(groupName, newPermission);
+        }
     };
 
     const clearLearned = async () => {
@@ -211,11 +285,111 @@ export default function Options() {
             {/* Navigation Tabs */}
             <div className="flex justify-center mb-8 border-b" style={{ borderColor: 'var(--border-glass)' }}>
                 <TabButton id="model" label="Model" icon={Cpu} />
+                <TabButton id="groups" label="Groups" icon={LayoutGrid} />
                 <TabButton id="feedback" label="Feedback" icon={MessageSquare} />
                 <TabButton id="advanced" label="Advanced" icon={Settings} />
             </div>
 
             <div className="flex flex-col gap-6">
+
+                {/* ─── GROUPS PAGE ──────────────────────── */}
+                {activeTab === 'groups' && (
+                    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <LayoutGrid className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Group Permissions</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-6">Create custom groups and drag them into columns to control how the AI can interact with them.</p>
+
+                            <div className="flex gap-4 mb-8">
+                                <input
+                                    type="text"
+                                    value={newGroupName}
+                                    onChange={(e) => setNewGroupName(e.target.value)}
+                                    placeholder="New Group Name (e.g., Reading List)"
+                                    className="themed-input flex-1 px-4 py-3 rounded-xl text-sm"
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddGroup()}
+                                />
+                                <button onClick={handleAddGroup} className="btn-primary px-6 rounded-xl text-sm font-medium">Add Group</button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Editable Column */}
+                                <div
+                                    className="flex flex-col gap-3 p-4 rounded-xl border border-glass bg-glass-hover min-h-[200px]"
+                                    onDragOver={onDragOver}
+                                    onDrop={(e) => onDrop(e, 'editable')}
+                                >
+                                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-glass">
+                                        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--success)' }}></div>
+                                        <h3 className="font-medium text-sm">Editable</h3>
+                                        <span className="text-xs text-text-muted ml-auto">Add & Remove</span>
+                                    </div>
+                                    {groupConfigs.filter(g => g.permission === 'editable').map(g => (
+                                        <div
+                                            key={g.name}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, g.name)}
+                                            className="flex items-center justify-between p-3 rounded-lg bg-accent-soft cursor-grab active:cursor-grabbing border border-glass"
+                                        >
+                                            <span className="font-medium text-sm">{g.name}</span>
+                                            <button onClick={() => handleRemoveGroup(g.name)} className="text-text-muted hover:text-danger"><X className="w-4 h-4" /></button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Add-Only Column */}
+                                <div
+                                    className="flex flex-col gap-3 p-4 rounded-xl border border-glass bg-glass-hover min-h-[200px]"
+                                    onDragOver={onDragOver}
+                                    onDrop={(e) => onDrop(e, 'append_only')}
+                                >
+                                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-glass">
+                                        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--warning, #f59e0b)' }}></div>
+                                        <h3 className="font-medium text-sm">Add Only</h3>
+                                        <span className="text-xs text-text-muted ml-auto">Append Only</span>
+                                    </div>
+                                    {groupConfigs.filter(g => g.permission === 'append_only').map(g => (
+                                        <div
+                                            key={g.name}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, g.name)}
+                                            className="flex items-center justify-between p-3 rounded-lg bg-accent-soft cursor-grab active:cursor-grabbing border border-glass"
+                                        >
+                                            <span className="font-medium text-sm">{g.name}</span>
+                                            <button onClick={() => handleRemoveGroup(g.name)} className="text-text-muted hover:text-danger"><X className="w-4 h-4" /></button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Locked Column */}
+                                <div
+                                    className="flex flex-col gap-3 p-4 rounded-xl border border-glass bg-glass-hover min-h-[200px]"
+                                    onDragOver={onDragOver}
+                                    onDrop={(e) => onDrop(e, 'locked')}
+                                >
+                                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-glass">
+                                        <div className="w-2 h-2 rounded-full" style={{ background: 'var(--danger)' }}></div>
+                                        <h3 className="font-medium text-sm">Locked</h3>
+                                        <span className="text-xs text-text-muted ml-auto">No Changes</span>
+                                    </div>
+                                    {groupConfigs.filter(g => g.permission === 'locked').map(g => (
+                                        <div
+                                            key={g.name}
+                                            draggable
+                                            onDragStart={(e) => onDragStart(e, g.name)}
+                                            className="flex items-center justify-between p-3 rounded-lg bg-accent-soft cursor-grab active:cursor-grabbing border border-glass"
+                                        >
+                                            <span className="font-medium text-sm">{g.name}</span>
+                                            <button onClick={() => handleRemoveGroup(g.name)} className="text-text-muted hover:text-danger"><X className="w-4 h-4" /></button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* ─── MODEL PAGE ──────────────────────── */}
                 {activeTab === 'model' && (
@@ -360,7 +534,7 @@ export default function Options() {
                                     )}
                                 </div>
 
-                                <div className="flex flex-col gap-4 min-h-[300px] max-h-[400px] overflow-y-auto pr-2 pb-2">
+                                <div className="flex flex-col gap-4 min-h-[200px] max-h-[400px] overflow-y-auto pr-2 pb-2">
                                     {chatLog.length === 0 && (
                                         <div className="my-auto text-center opacity-40">
                                             <MessageSquare className="w-12 h-12 mx-auto mb-3" />
