@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database, X, LayoutGrid } from 'lucide-react';
+import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database, X, LayoutGrid, FolderOpen, RotateCcw, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import { getLearnedPatterns, getSoulText, saveLearnedPatterns, saveSoulText } from '../lib/learningEngine';
-import { LastAction, AIConfig, AIProvider, GroupConfig, GroupPermission } from '../types';
+import { LastAction, AIConfig, AIProvider, GroupConfig, GroupPermission, Workspace } from '../types';
 
 const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> = {
     openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -13,7 +13,7 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> 
 };
 
 export default function Options() {
-    const [activeTab, setActiveTab] = useState<'model' | 'groups' | 'feedback' | 'advanced'>('model');
+    const [activeTab, setActiveTab] = useState<'model' | 'groups' | 'workspaces' | 'feedback' | 'advanced'>('model');
     const [aiConfig, setAIConfig] = useState<AIConfig>({
         provider: 'groq',
         apiKey: '',
@@ -38,6 +38,13 @@ export default function Options() {
         { name: 'Communication', permission: 'editable' }
     ]);
     const [newGroupName, setNewGroupName] = useState('');
+
+    // Workspace state
+    const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+    const [expandedWs, setExpandedWs] = useState<string | null>(null);
+    const [wsLoading, setWsLoading] = useState(false);
+    const [wsMessage, setWsMessage] = useState('');
+    const [mergeExisting, setMergeExisting] = useState(true);
 
     useEffect(() => {
         chrome.storage.local.get(['aiConfig', 'groqApiKey', 'lastAction', 'groupConfigs'], (result) => {
@@ -102,7 +109,58 @@ export default function Options() {
             setSoulText(s);
         };
         loadData();
+        loadWorkspaces();
     }, []);
+
+    const loadWorkspaces = () => {
+        chrome.runtime.sendMessage({ action: 'getWorkspaces' }, (response) => {
+            if (response && response.workspaces) {
+                setWorkspaces(response.workspaces);
+            }
+        });
+    };
+
+    const handleRestoreWorkspace = (id: string) => {
+        setWsLoading(true);
+        setWsMessage('');
+        chrome.runtime.sendMessage({ action: 'restoreWorkspace', workspaceId: id, mergeExisting }, (response) => {
+            setWsLoading(false);
+            if (response?.error) {
+                setWsMessage(`Error: ${response.error}`);
+            } else {
+                setWsMessage(`Restored ${response.groupsRestored} groups (${response.tabsRestored} tabs)`);
+            }
+            setTimeout(() => setWsMessage(''), 4000);
+        });
+    };
+
+    const handleRestoreGroup = (wsId: string, groupId: string) => {
+        setWsLoading(true);
+        chrome.runtime.sendMessage({ action: 'restoreGroup', workspaceId: wsId, groupId, mergeExisting }, (response) => {
+            setWsLoading(false);
+            if (response?.error) {
+                setWsMessage(`Error: ${response.error}`);
+            } else {
+                setWsMessage(`Restored ${response.tabsRestored} tabs`);
+            }
+            setTimeout(() => setWsMessage(''), 4000);
+        });
+    };
+
+    const handleDeleteWorkspace = (id: string) => {
+        if (!confirm('Delete this workspace? This cannot be undone.')) return;
+        chrome.runtime.sendMessage({ action: 'deleteWorkspace', workspaceId: id }, (response) => {
+            if (!response?.error) {
+                loadWorkspaces();
+                if (expandedWs === id) setExpandedWs(null);
+            }
+        });
+    };
+
+    const colorDot: Record<string, string> = {
+        blue: '#4285f4', red: '#ea4335', yellow: '#fbbc04', green: '#34a853',
+        pink: '#ff6d93', purple: '#a142f4', cyan: '#24c1e0', orange: '#fa903e', grey: '#9aa0a6',
+    };
 
     const handleSaveConfig = () => {
         // Before saving, ensure the current UI state is reflected in the savedConfigs map
@@ -286,6 +344,7 @@ export default function Options() {
             <div className="flex justify-center mb-8 border-b" style={{ borderColor: 'var(--border-glass)' }}>
                 <TabButton id="model" label="Model" icon={Cpu} />
                 <TabButton id="groups" label="Groups" icon={LayoutGrid} />
+                <TabButton id="workspaces" label="Workspaces" icon={FolderOpen} />
                 <TabButton id="feedback" label="Feedback" icon={MessageSquare} />
                 <TabButton id="advanced" label="Advanced" icon={Settings} />
             </div>
@@ -387,6 +446,125 @@ export default function Options() {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ─── WORKSPACES PAGE ──────────────────────── */}
+                {activeTab === 'workspaces' && (
+                    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <FolderOpen className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Saved Workspaces</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-4">
+                                Workspaces are snapshots of your tab groups. Save a workspace from the popup, then restore it here anytime.
+                            </p>
+
+                            <label className="flex items-center gap-2 mb-6 cursor-pointer">
+                                <input
+                                    type="checkbox"
+                                    checked={mergeExisting}
+                                    onChange={(e) => setMergeExisting(e.target.checked)}
+                                    className="w-4 h-4 rounded"
+                                />
+                                <span className="text-sm">Merge with existing tabs on restore (reuse open tabs instead of duplicating)</span>
+                            </label>
+
+                            {wsMessage && (
+                                <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-medium" style={{
+                                    background: wsMessage.startsWith('Error') ? 'var(--danger-bg)' : 'var(--success-bg)',
+                                    color: wsMessage.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
+                                }}>
+                                    <CheckCircle className="w-4 h-4" />
+                                    {wsMessage}
+                                </div>
+                            )}
+
+                            {workspaces.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <FolderOpen className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+                                    <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No saved workspaces yet.</p>
+                                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Use the popup to save your current tab groups as a workspace.</p>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col gap-4">
+                                    {workspaces.map(ws => (
+                                        <div key={ws.id} className="glass-card-solid rounded-xl overflow-hidden">
+                                            {/* Workspace header */}
+                                            <div
+                                                className="flex items-center gap-3 p-5 cursor-pointer hover:bg-glass-hover transition-all"
+                                                onClick={() => setExpandedWs(expandedWs === ws.id ? null : ws.id)}
+                                            >
+                                                {expandedWs === ws.id
+                                                    ? <ChevronDown className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+                                                    : <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+                                                }
+                                                <div className="flex-1 min-w-0">
+                                                    <h3 className="font-semibold text-sm">{ws.name}</h3>
+                                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                                        {ws.groups.length} groups &middot; {ws.groups.reduce((acc, g) => acc + g.tabs.length, 0)} tabs &middot; Saved {new Date(ws.createdAt).toLocaleDateString()}
+                                                    </p>
+                                                </div>
+                                                <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                                    <button
+                                                        onClick={() => handleRestoreWorkspace(ws.id)}
+                                                        disabled={wsLoading}
+                                                        className="btn-primary px-4 py-2 rounded-lg text-xs flex items-center gap-1.5 disabled:opacity-40"
+                                                    >
+                                                        <RotateCcw className="w-3.5 h-3.5" />
+                                                        Restore
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteWorkspace(ws.id)}
+                                                        className="p-2 rounded-lg transition-all border border-glass hover:bg-glass-hover"
+                                                        style={{ color: 'var(--danger)' }}
+                                                        title="Delete workspace"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Expanded groups */}
+                                            {expandedWs === ws.id && (
+                                                <div className="px-5 pb-5 flex flex-col gap-3" style={{ borderTop: '1px solid var(--border-glass)' }}>
+                                                    {ws.groups.map(g => (
+                                                        <div key={g.id} className="rounded-xl p-4" style={{ background: 'var(--accent-soft)' }}>
+                                                            <div className="flex items-center gap-2 mb-2">
+                                                                <div
+                                                                    className="w-3 h-3 rounded-full flex-shrink-0"
+                                                                    style={{ background: colorDot[g.color] || colorDot.grey }}
+                                                                />
+                                                                <span className="font-medium text-sm flex-1">{g.name}</span>
+                                                                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                                    {g.tabs.length} tabs
+                                                                </span>
+                                                                <button
+                                                                    onClick={() => handleRestoreGroup(ws.id, g.id)}
+                                                                    disabled={wsLoading}
+                                                                    className="bg-glass hover:bg-glass-hover text-text-primary px-3 py-1.5 rounded-lg text-xs flex items-center gap-1 border border-glass transition-all disabled:opacity-40"
+                                                                >
+                                                                    <RotateCcw className="w-3 h-3" />
+                                                                    Restore
+                                                                </button>
+                                                            </div>
+                                                            <ul className="flex flex-col gap-1 ml-5">
+                                                                {g.tabs.map((t, idx) => (
+                                                                    <li key={idx} className="text-xs truncate" style={{ color: 'var(--text-secondary)' }} title={t.url}>
+                                                                        {t.title || t.domain}
+                                                                    </li>
+                                                                ))}
+                                                            </ul>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
