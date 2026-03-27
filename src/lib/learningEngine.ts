@@ -16,9 +16,10 @@ export const saveLearnedPatterns = async (patterns: LearnedPattern): Promise<voi
 };
 
 /**
- * Increment the association weight between a domain and a group name
+ * Increment the association weight between a domain and a group name.
+ * Default weight is 1.0 (manual grouping observed in real-time).
  */
-export const logManualGrouping = async (domain: string, groupName: string): Promise<void> => {
+export const logManualGrouping = async (domain: string, groupName: string, weight: number = 1): Promise<void> => {
     if (!domain || !groupName) return;
 
     const patterns = await getLearnedPatterns();
@@ -31,7 +32,60 @@ export const logManualGrouping = async (domain: string, groupName: string): Prom
         patterns[domain][groupName] = 0;
     }
 
-    patterns[domain][groupName] += 1;
+    patterns[domain][groupName] += weight;
+
+    await saveLearnedPatterns(patterns);
+};
+
+/**
+ * Passive learning: learn from current browser group state with low confidence.
+ * Called periodically (every few hours) to pick up how the user organizes over time.
+ * Uses a low weight (0.3) to avoid overriding explicit feedback or rules.
+ */
+export const learnPassivelyFromCurrentGroups = async (): Promise<number> => {
+    const PASSIVE_WEIGHT = 0.3;
+    let learned = 0;
+
+    try {
+        const groups = await chrome.tabGroups.query({});
+        for (const group of groups) {
+            if (!group.title) continue;
+            const tabs = await chrome.tabs.query({ groupId: group.id });
+            for (const tab of tabs) {
+                if (tab.url && !tab.url.startsWith('chrome://') && !tab.url.startsWith('brave://')) {
+                    const domain = new URL(tab.url).hostname;
+                    await logManualGrouping(domain, group.title, PASSIVE_WEIGHT);
+                    learned++;
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[IntelliTab:passive-learn] Error:', err);
+    }
+
+    return learned;
+};
+
+/**
+ * Learn from user corrections with moderate-high confidence.
+ * When the user manually fixes AI grouping, these corrections carry more weight
+ * than passive observations but less than explicit rules.
+ */
+export const logCorrectionLearning = async (domain: string, correctGroup: string, wrongGroup: string): Promise<void> => {
+    const CORRECTION_WEIGHT = 2.0;
+    const PENALTY_WEIGHT = -0.5;
+
+    const patterns = await getLearnedPatterns();
+
+    // Boost the correct group
+    if (!patterns[domain]) patterns[domain] = {};
+    if (!patterns[domain][correctGroup]) patterns[domain][correctGroup] = 0;
+    patterns[domain][correctGroup] += CORRECTION_WEIGHT;
+
+    // Penalize the wrong group (but don't go below 0)
+    if (wrongGroup && wrongGroup !== 'ungrouped' && patterns[domain][wrongGroup] !== undefined) {
+        patterns[domain][wrongGroup] = Math.max(0, patterns[domain][wrongGroup] + PENALTY_WEIGHT);
+    }
 
     await saveLearnedPatterns(patterns);
 };
