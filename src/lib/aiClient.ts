@@ -1,4 +1,4 @@
-import { TabInfo, Rule, AIResponse, LearnedPattern, AIConfig, LastAction, FeedbackResponse, GroupConfig } from '../types';
+import { TabInfo, Rule, AIResponse, LearnedPattern, AIConfig, LastAction, FeedbackResponse, GroupConfig, CorrectionDiff } from '../types';
 
 const getBaseUrl = (config: AIConfig): string => {
     if (config.baseUrl) return config.baseUrl;
@@ -275,4 +275,120 @@ Schema:
     }
 
     return JSON.parse(content) as FeedbackResponse;
+};
+
+/**
+ * Correction analysis response from AI
+ */
+export interface CorrectionAnalysis {
+    /** Human-readable summary of what the user corrected and why */
+    summary: string;
+    /** Suggested SOUL amendments — soft guidance, not strict rules */
+    soulSuggestions?: string;
+    /** Domain→group pattern updates derived from corrections */
+    updatedPatterns?: LearnedPattern;
+}
+
+/**
+ * Analyze user corrections to AI grouping and suggest SOUL/pattern updates.
+ *
+ * The AI focuses on understanding WHY the user made changes:
+ * - Bad grouping (wrong category for the content)
+ * - Bad naming (group name doesn't fit the tabs)
+ * - Missing context (AI didn't understand what the tab was for)
+ * - User preference (subjective organization style)
+ *
+ * The response should be gentle suggestions, not strict rules,
+ * to avoid over-constraining future grouping.
+ */
+export const processCorrections = async (
+    diff: CorrectionDiff,
+    currentSoul: string,
+    currentPatterns: LearnedPattern,
+    config: AIConfig
+): Promise<CorrectionAnalysis> => {
+    if (!config.apiKey) {
+        throw new Error(`${config.provider.toUpperCase()} API Key is missing.`);
+    }
+
+    const systemPrompt = `You are an AI system tuner for IntelliTab, a browser tab organizer.
+
+The user ran the AI tab organizer, then manually corrected the results. Your job is to:
+1. Understand WHY each correction was made (not just WHAT changed)
+2. Suggest gentle amendments to the SOUL (system instructions) if a pattern emerges
+3. Suggest domain→group pattern updates for clear corrections
+
+=== CURRENT SOUL ===
+${currentSoul}
+
+=== CURRENT LEARNED PATTERNS (top entries) ===
+${JSON.stringify(currentPatterns).substring(0, 800)}
+
+=== CORRECTIONS THE USER MADE ===
+${JSON.stringify(diff, null, 2)}
+
+Guidelines for your analysis:
+- Focus on the REASON behind each change. Common reasons:
+  * "Bad grouping" — the tab's content doesn't match the assigned group category
+  * "Bad naming" — the group name was misleading or too broad/narrow
+  * "User preference" — the user has a personal style (e.g. they consider GitHub as "Work" not "Dev")
+  * "Context gap" — the AI couldn't tell what the page was about from URL/title alone
+- For soulSuggestions: write soft guidance, not strict rules. Example:
+  GOOD: "Consider that university portals with '/assignment' in URL are likely Study, not Work"
+  BAD: "ALWAYS put university URLs in Study"
+- For updatedPatterns: only include clear, unambiguous corrections. Use weight 2 for strong signals, 1 for moderate.
+- If a group was renamed, think about whether the old name was wrong (suggest SOUL hint) or just a preference.
+- If only 1-2 tabs were moved, it might be noise — mention it but don't overreact.
+- Keep the summary conversational and brief.
+
+Return ONLY valid JSON:
+{
+  "summary": "string — brief explanation of what the user corrected and why",
+  "soulSuggestions": "string (optional) — soft amendments to add to SOUL, or null if none needed",
+  "updatedPatterns": { "domain": { "groupName": weight } } (optional)
+}`;
+
+    const userMessage = `The user made ${diff.tabCorrections.length} tab corrections and ${diff.groupRenames.length} group renames after the AI organized their tabs. Analyze these corrections and suggest improvements.`;
+
+    const baseUrl = getBaseUrl(config);
+    const headers = getHeaders(config);
+    const endpoint = isClaude(config) ? `${baseUrl}/messages` : `${baseUrl}/chat/completions`;
+
+    const body: any = {
+        model: config.model,
+        temperature: 0.3
+    };
+
+    if (isClaude(config)) {
+        body.system = systemPrompt;
+        body.messages = [{ role: 'user', content: userMessage }];
+        body.max_tokens = 4096;
+    } else {
+        body.messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ];
+        body.response_format = { type: 'json_object' };
+    }
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body)
+    });
+
+    if (!response.ok) {
+        const err = await response.text();
+        throw new Error(`${config.provider.toUpperCase()} API error: ${response.status} ${err}`);
+    }
+
+    const data = await response.json();
+    let content = '';
+    if (isClaude(config)) {
+        content = data.content[0].text;
+    } else {
+        content = data.choices[0].message.content;
+    }
+
+    return JSON.parse(content) as CorrectionAnalysis;
 };
