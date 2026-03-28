@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+  body {
+    width: 1200px;
+    height: 630px;
+    font-family: 'Inter', system-ui, sans-serif;
+    background: #0a0a0a;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  .bg-gradient {
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 50%, rgba(99,102,241,0.15) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 60% at 80% 30%, rgba(168,85,247,0.12) 0%, transparent 70%),
+      radial-gradient(ellipse 40% 40% at 60% 80%, rgba(59,130,246,0.1) 0%, transparent 70%);
+  }
+  .content {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 60px;
+    padding: 0 80px;
+    width: 100%;
+  }
+  .left {
+    flex: 1;
+  }
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 100px;
+    padding: 6px 16px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+    margin-bottom: 24px;
+    font-weight: 500;
+  }
+  .icon {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 20px;
+    color: rgba(255,255,255,0.9);
+  }
+  h1 {
+    font-size: 52px;
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    margin-bottom: 16px;
+  }
+  .gradient-text {
+    background: linear-gradient(135deg, #818cf8, #a78bfa, #60a5fa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sub {
+    font-size: 18px;
+    color: rgba(255,255,255,0.55);
+    line-height: 1.5;
+    max-width: 420px;
+    font-weight: 400;
+  }
+  .right {
+    flex-shrink: 0;
+    width: 380px;
+  }
+  .browser-mock {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .browser-top {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; }
+  .dot.y { background: #febc2e; }
+  .dot.g { background: #28c840; }
+  .browser-url {
+    margin-left: 10px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.3);
+  }
+  .tab-groups {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .tab-group {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 8px;
+    padding: 10px 14px;
+  }
+  .group-label {
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 6px;
+    color: rgba(255,255,255,0.8);
+  }
+  .tabs-row {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .tab-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    background: rgba(255,255,255,0.06);
+    border-radius: 4px;
+    color: rgba(255,255,255,0.5);
+  }
+  .bottom-bar {
+    position: absolute;
+    bottom: 32px;
+    left: 80px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: rgba(255,255,255,0.35);
+    font-weight: 500;
+  }
+  .chrome-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    padding: 5px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+  }
+</style>
+</head>
+<body>
+  <div class="bg-gradient"></div>
+  <div class="content">
+    <div class="left">
+      <div class="badge">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+        </svg>
+        Chrome Extension
+      </div>
+      <h1>IntelliTab</h1>
+      <h1 style="margin-top:-8px"><span class="gradient-text">AI Tab Organizer</span></h1>
+      <p class="sub">Automatically groups and labels your browser tabs by context using AI. One click, clean workspace.</p>
+    </div>
+    <div class="right">
+      <div class="browser-mock">
+        <div class="browser-top">
+          <div class="dot r"></div>
+          <div class="dot y"></div>
+          <div class="dot g"></div>
+          <div class="browser-url">chrome://newtab</div>
+        </div>
+        <div class="tab-groups">
+          <div class="tab-group">
+            <div class="group-label">💻 Dev</div>
+            <div class="tabs-row">
+              <div class="tab-pill">github.com</div>
+              <div class="tab-pill">vercel.com</div>
+              <div class="tab-pill">localhost:3000</div>
+            </div>
+          </div>
+          <div class="tab-group">
+            <div class="group-label">📚 Study</div>
+            <div class="tabs-row">
+              <div class="tab-pill">canvas.asu.edu</div>
+              <div class="tab-pill">docs.google.com</div>
+            </div>
+          </div>
+          <div class="tab-group">
+            <div class="group-label">📈 Markets</div>
+            <div class="tabs-row">
+              <div class="tab-pill">tradingview.com</div>
+              <div class="tab-pill">kalshi.com</div>
+            </div>
+          </div>
+          <div class="tab-group">
+            <div class="group-label">🎬 Entertainment</div>
+            <div class="tabs-row">
+              <div class="tab-pill">youtube.com</div>
+              <div class="tab-pill">twitch.tv</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="bottom-bar">
+    <span class="chrome-badge">Free on Chrome Web Store</span>
+    <span>· intellitab.aranish.uk</span>
+  </div>
+</body>
+</html>
