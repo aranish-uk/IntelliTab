@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "IntelliTab",
-    "version": "2.1.0",
+    "version": "3.0.0",
     "description": "AI-powered browser extension that intelligently organizes tabs.",
     "permissions": [
         "tabs",
@@ -27,5 +27,14 @@
             "128": "icon-128.png"
         }
     },
-    "options_page": "options.html"
+    "options_page": "options.html",
+    "commands": {
+        "group-selected": {
+            "suggested_key": {
+                "default": "Alt+G",
+                "mac": "Alt+G"
+            },
+            "description": "Group selected (highlighted) tabs"
+        }
+    }
 }

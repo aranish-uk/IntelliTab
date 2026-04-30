@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database, X, LayoutGrid, FolderOpen, RotateCcw, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { Key, BookOpen, CheckCircle, BrainCircuit, RefreshCw, Upload, Download, Save, Link, Type, MessageSquare, Send, Settings, Cpu, Database, X, LayoutGrid, FolderOpen, RotateCcw, Trash2, ChevronDown, ChevronRight, Eye, Zap } from 'lucide-react';
 import { getLearnedPatterns, getSoulText, saveLearnedPatterns, saveSoulText } from '../lib/learningEngine';
-import { LastAction, AIConfig, AIProvider, GroupConfig, GroupPermission, Workspace } from '../types';
+import { exportTemplate, downloadTemplate, validateTemplate, importTemplate, ImportOptions } from '../lib/templateEngine';
+import { LastAction, AIConfig, AIProvider, GroupConfig, GroupPermission, Workspace, PopupSettings, DEFAULT_POPUP_SETTINGS, AutoOrganizeConfig, DEFAULT_AUTO_ORGANIZE, StaleTabConfig, DEFAULT_STALE_CONFIG, IntelliTabTemplate, SyncConfig, DEFAULT_SYNC_CONFIG, ContextGroupConfig, DEFAULT_CONTEXT_GROUP } from '../types';
 
 const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> = {
     openai: { baseUrl: 'https://api.openai.com/v1', model: 'gpt-4o-mini' },
@@ -13,7 +14,7 @@ const PROVIDER_DEFAULTS: Record<AIProvider, { baseUrl: string; model: string }> 
 };
 
 export default function Options() {
-    const [activeTab, setActiveTab] = useState<'model' | 'groups' | 'workspaces' | 'feedback' | 'advanced'>('model');
+    const [activeTab, setActiveTab] = useState<'model' | 'groups' | 'automation' | 'workspaces' | 'feedback' | 'advanced'>('model');
     const [aiConfig, setAIConfig] = useState<AIConfig>({
         provider: 'groq',
         apiKey: '',
@@ -45,6 +46,32 @@ export default function Options() {
     const [wsLoading, setWsLoading] = useState(false);
     const [wsMessage, setWsMessage] = useState('');
     const [mergeExisting, setMergeExisting] = useState(true);
+
+    // Popup settings state
+    const [popupSettings, setPopupSettings] = useState<PopupSettings>(DEFAULT_POPUP_SETTINGS);
+
+    // Context-aware grouping (non-LLM fast path) state
+    const [contextConfig, setContextConfig] = useState<ContextGroupConfig>(DEFAULT_CONTEXT_GROUP);
+
+    // Auto-organize state
+    const [autoConfig, setAutoConfig] = useState<AutoOrganizeConfig>(DEFAULT_AUTO_ORGANIZE);
+    const [autoStatus, setAutoStatus] = useState('');
+    const [lastAutoRun, setLastAutoRun] = useState<number | null>(null);
+
+    // Stale tab config state
+    const [staleConfig, setStaleConfig] = useState<StaleTabConfig>(DEFAULT_STALE_CONFIG);
+
+    // Sync state
+    const [syncConfig, setSyncConfig] = useState<SyncConfig>(DEFAULT_SYNC_CONFIG);
+    const [syncStatus, setSyncStatus] = useState('');
+    const [syncing, setSyncing] = useState(false);
+
+    // Template state
+    const [templateName, setTemplateName] = useState('');
+    const [templateIncludePatterns, setTemplateIncludePatterns] = useState(false);
+    const [templateStatus, setTemplateStatus] = useState('');
+    const [importPreview, setImportPreview] = useState<IntelliTabTemplate | null>(null);
+    const [importMode, setImportMode] = useState<'replace' | 'merge'>('merge');
 
     useEffect(() => {
         chrome.storage.local.get(['aiConfig', 'groqApiKey', 'lastAction', 'groupConfigs'], (result) => {
@@ -110,6 +137,34 @@ export default function Options() {
         };
         loadData();
         loadWorkspaces();
+
+        // Load popup settings
+        chrome.runtime.sendMessage({ action: 'getPopupSettings' }, (response) => {
+            if (response && !response.error) setPopupSettings(response);
+        });
+
+        // Load context-grouping config
+        chrome.runtime.sendMessage({ action: 'getContextGroupConfig' }, (response) => {
+            if (response && !response.error) setContextConfig(response);
+        });
+
+        // Load auto-organize config
+        chrome.runtime.sendMessage({ action: 'getAutoOrganizeConfig' }, (response) => {
+            if (response && !response.error) setAutoConfig(response);
+        });
+        chrome.runtime.sendMessage({ action: 'getAutoOrganizeStatus' }, (response) => {
+            if (response?.lastRun) setLastAutoRun(response.lastRun);
+        });
+
+        // Load stale tab config
+        chrome.runtime.sendMessage({ action: 'getStaleConfig' }, (response) => {
+            if (response && !response.error) setStaleConfig(response);
+        });
+
+        // Load sync config
+        chrome.runtime.sendMessage({ action: 'getSyncConfig' }, (response) => {
+            if (response && !response.error) setSyncConfig(response);
+        });
     }, []);
 
     const loadWorkspaces = () => {
@@ -226,6 +281,27 @@ export default function Options() {
         const updated = groupConfigs.filter(g => g.name !== name);
         setGroupConfigs(updated);
         chrome.storage.local.set({ groupConfigs: updated });
+        // Also ungroup those tabs in the browser
+        chrome.runtime.sendMessage({ action: 'removeBrowserGroup', groupName: name });
+    };
+
+    const refreshGroupsFromBrowser = () => {
+        if (!chrome.tabGroups) return;
+        chrome.tabGroups.query({}, (groups) => {
+            const openGroupNames = Array.from(new Set(groups.map(g => g.title).filter(Boolean))) as string[];
+            let updated = [...groupConfigs];
+            let changed = false;
+            for (const name of openGroupNames) {
+                if (name && !updated.some(g => g.name === name)) {
+                    updated.push({ name, permission: 'editable' });
+                    changed = true;
+                }
+            }
+            if (changed) {
+                setGroupConfigs(updated);
+                chrome.storage.local.set({ groupConfigs: updated });
+            }
+        });
     };
 
     const handleUpdatePermission = (name: string, permission: GroupPermission) => {
@@ -257,6 +333,117 @@ export default function Options() {
             setLearningStatus('Learning reset!');
             setTimeout(() => setLearningStatus(''), 3000);
         }
+    };
+
+    const handleAutoConfigChange = (updates: Partial<AutoOrganizeConfig>) => {
+        const updated = { ...autoConfig, ...updates };
+        setAutoConfig(updated);
+        chrome.runtime.sendMessage({ action: 'saveAutoOrganizeConfig', config: updated }, () => {
+            setAutoStatus('Saved');
+            setTimeout(() => setAutoStatus(''), 2000);
+        });
+    };
+
+    const handleSyncConfigChange = (updates: Partial<SyncConfig>) => {
+        const updated = { ...syncConfig, ...updates };
+        setSyncConfig(updated);
+        chrome.runtime.sendMessage({ action: 'saveSyncConfig', config: updated });
+    };
+
+    const handleSyncNow = () => {
+        setSyncing(true);
+        setSyncStatus('');
+        chrome.runtime.sendMessage({ action: 'syncNow' }, (response) => {
+            setSyncing(false);
+            if (response?.error) {
+                setSyncStatus(`Error: ${response.error}`);
+            } else {
+                const parts = [];
+                if (response?.soulUpdated) parts.push('SOUL updated');
+                if (response?.rulesUpdated) parts.push('rules synced');
+                if (response?.groupsUpdated) parts.push('groups synced');
+                setSyncStatus(parts.length > 0 ? `Synced: ${parts.join(', ')}` : 'Everything is up to date');
+                // Refresh last synced time
+                chrome.runtime.sendMessage({ action: 'getSyncConfig' }, (r) => {
+                    if (r && !r.error) setSyncConfig(r);
+                });
+            }
+            setTimeout(() => setSyncStatus(''), 5000);
+        });
+    };
+
+    const handleExportTemplate = async () => {
+        const name = templateName.trim() || 'My Setup';
+        const template = await exportTemplate(name, templateIncludePatterns);
+        downloadTemplate(template);
+        setTemplateStatus('Template exported!');
+        setTimeout(() => setTemplateStatus(''), 3000);
+    };
+
+    const handleImportFile = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = (e: any) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (ev) => {
+                const content = ev.target?.result as string;
+                const result = validateTemplate(content);
+                if (!result.valid) {
+                    setTemplateStatus(`Invalid: ${result.errors.join(', ')}`);
+                    setTimeout(() => setTemplateStatus(''), 5000);
+                    return;
+                }
+                setImportPreview(result.template!);
+            };
+            reader.readAsText(file);
+        };
+        input.click();
+    };
+
+    const handleImportTemplate = async () => {
+        if (!importPreview) return;
+        const options: ImportOptions = {
+            mode: importMode,
+            importSoul: true,
+            importRules: true,
+            importGroups: true,
+            importPatterns: !!importPreview.learnedPatterns,
+        };
+        const result = await importTemplate(importPreview, options);
+        setImportPreview(null);
+        setTemplateStatus(
+            `Imported: SOUL ${result.soulUpdated ? 'updated' : 'skipped'}, ${result.rulesImported} rules, ${result.groupsImported} groups, ${result.patternsImported} patterns`
+        );
+        // Refresh local state
+        const p = await getLearnedPatterns();
+        setLearnedJson(JSON.stringify(p, null, 2));
+        const s = await getSoulText();
+        setSoulText(s);
+        setTimeout(() => setTemplateStatus(''), 5000);
+    };
+
+    const handleStaleConfigChange = (updates: Partial<StaleTabConfig>) => {
+        const updated = { ...staleConfig, ...updates };
+        setStaleConfig(updated);
+        chrome.runtime.sendMessage({ action: 'saveStaleConfig', config: updated });
+    };
+
+    const handleContextConfigChange = (key: keyof ContextGroupConfig, value: boolean) => {
+        const updated = { ...contextConfig, [key]: value };
+        setContextConfig(updated);
+        chrome.runtime.sendMessage({ action: 'saveContextGroupConfig', config: updated });
+    };
+
+    const handlePopupSettingChange = (key: keyof PopupSettings, value: boolean) => {
+        const updated = { ...popupSettings, [key]: value };
+        // Ensure at least one tab is visible
+        const anyVisible = Object.values(updated).some(v => v);
+        if (!anyVisible) return;
+        setPopupSettings(updated);
+        chrome.runtime.sendMessage({ action: 'savePopupSettings', settings: updated });
     };
 
     const exportLearnedJson = () => {
@@ -344,6 +531,7 @@ export default function Options() {
             <div className="flex justify-center mb-8 border-b" style={{ borderColor: 'var(--border-glass)' }}>
                 <TabButton id="model" label="Model" icon={Cpu} />
                 <TabButton id="groups" label="Groups" icon={LayoutGrid} />
+                <TabButton id="automation" label="Automation" icon={Zap} />
                 <TabButton id="workspaces" label="Workspaces" icon={FolderOpen} />
                 <TabButton id="feedback" label="Feedback" icon={MessageSquare} />
                 <TabButton id="advanced" label="Advanced" icon={Settings} />
@@ -355,9 +543,18 @@ export default function Options() {
                 {activeTab === 'groups' && (
                     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
                         <div className="glass-card rounded-2xl p-8">
-                            <div className="flex items-center gap-3 mb-6">
-                                <LayoutGrid className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
-                                <h2 className="text-xl font-semibold tracking-tight">Group Permissions</h2>
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <LayoutGrid className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                    <h2 className="text-xl font-semibold tracking-tight">Group Permissions</h2>
+                                </div>
+                                <button
+                                    onClick={refreshGroupsFromBrowser}
+                                    className="bg-glass hover:bg-glass-hover text-text-primary px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 border border-glass transition-all"
+                                    title="Pull currently open groups from the browser"
+                                >
+                                    <RefreshCw className="w-4 h-4" /> Refresh from Browser
+                                </button>
                             </div>
                             <p className="text-sm text-text-secondary mb-6">Create custom groups and drag them into columns to control how the AI can interact with them.</p>
 
@@ -446,6 +643,183 @@ export default function Options() {
                                     ))}
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ─── AUTOMATION PAGE ──────────────────────── */}
+                {activeTab === 'automation' && (
+                    <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <Zap className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                    <h2 className="text-xl font-semibold tracking-tight">Auto-Organize</h2>
+                                </div>
+                                {autoStatus && (
+                                    <span className="text-xs font-medium" style={{ color: 'var(--success)' }}>{autoStatus}</span>
+                                )}
+                            </div>
+                            <p className="text-sm text-text-secondary mb-6">
+                                Automatically organize your tabs when they pile up. Requires an API key to be configured.
+                            </p>
+
+                            {/* Master toggle */}
+                            <label className="flex items-center justify-between p-4 rounded-xl border border-glass mb-6 cursor-pointer hover:bg-glass transition-all">
+                                <div>
+                                    <span className="font-medium text-sm">Enable auto-organize</span>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                        Tabs are organized automatically when ungrouped tabs pile up
+                                    </p>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={autoConfig.enabled}
+                                    onChange={(e) => handleAutoConfigChange({ enabled: e.target.checked })}
+                                    className="w-5 h-5 rounded"
+                                />
+                            </label>
+
+                            {autoConfig.enabled && (
+                                <div className="flex flex-col gap-5">
+                                    {/* Threshold */}
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                                                Ungrouped tab threshold
+                                            </label>
+                                            <span className="text-sm font-medium">{autoConfig.ungroupedThreshold}</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min={5}
+                                            max={30}
+                                            value={autoConfig.ungroupedThreshold}
+                                            onChange={(e) => handleAutoConfigChange({ ungroupedThreshold: parseInt(e.target.value) })}
+                                            className="w-full"
+                                        />
+                                        <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            <span>5 (aggressive)</span>
+                                            <span>30 (relaxed)</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Burst detection */}
+                                    <label className="flex items-center justify-between p-4 rounded-xl border border-glass cursor-pointer hover:bg-glass transition-all">
+                                        <div>
+                                            <span className="font-medium text-sm">Burst detection</span>
+                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                                Trigger when {autoConfig.burstCount}+ tabs open within {autoConfig.burstWindow / 1000}s
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={autoConfig.burstDetection}
+                                            onChange={(e) => handleAutoConfigChange({ burstDetection: e.target.checked })}
+                                            className="w-5 h-5 rounded"
+                                        />
+                                    </label>
+
+                                    {/* Cooldown */}
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                                                Cooldown between runs
+                                            </label>
+                                            <span className="text-sm font-medium">{autoConfig.cooldownMinutes} min</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min={1}
+                                            max={60}
+                                            value={autoConfig.cooldownMinutes}
+                                            onChange={(e) => handleAutoConfigChange({ cooldownMinutes: parseInt(e.target.value) })}
+                                            className="w-full"
+                                        />
+                                        <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            <span>1 min</span>
+                                            <span>60 min</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Last run info */}
+                                    {lastAutoRun && (
+                                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            Last auto-organize: {new Date(lastAutoRun).toLocaleString()}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Tab Hygiene / Stale Tabs */}
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <RefreshCw className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Tab Hygiene</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-6">
+                                Detect tabs you haven't visited in a while. Archive or close them to keep your browser clean.
+                            </p>
+
+                            {/* Master toggle */}
+                            <label className="flex items-center justify-between p-4 rounded-xl border border-glass mb-6 cursor-pointer hover:bg-glass transition-all">
+                                <div>
+                                    <span className="font-medium text-sm">Enable stale tab detection</span>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                        Periodically check for tabs you haven't used
+                                    </p>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={staleConfig.enabled}
+                                    onChange={(e) => handleStaleConfigChange({ enabled: e.target.checked })}
+                                    className="w-5 h-5 rounded"
+                                />
+                            </label>
+
+                            {staleConfig.enabled && (
+                                <div className="flex flex-col gap-5">
+                                    {/* Stale threshold */}
+                                    <div className="flex flex-col gap-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-semibold uppercase tracking-wider text-text-tertiary">
+                                                Mark as stale after
+                                            </label>
+                                            <span className="text-sm font-medium">{staleConfig.staleAfterHours}h</span>
+                                        </div>
+                                        <input
+                                            type="range"
+                                            min={4}
+                                            max={168}
+                                            step={4}
+                                            value={staleConfig.staleAfterHours}
+                                            onChange={(e) => handleStaleConfigChange({ staleAfterHours: parseInt(e.target.value) })}
+                                            className="w-full"
+                                        />
+                                        <div className="flex justify-between text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            <span>4 hours</span>
+                                            <span>7 days</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Auto-archive */}
+                                    <label className="flex items-center justify-between p-4 rounded-xl border border-glass cursor-pointer hover:bg-glass transition-all">
+                                        <div>
+                                            <span className="font-medium text-sm">Auto-archive stale tabs</span>
+                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                                Automatically save stale tabs to a workspace and close them
+                                            </p>
+                                        </div>
+                                        <input
+                                            type="checkbox"
+                                            checked={staleConfig.autoArchive}
+                                            onChange={(e) => handleStaleConfigChange({ autoArchive: e.target.checked })}
+                                            className="w-5 h-5 rounded"
+                                        />
+                                    </label>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
@@ -766,6 +1140,237 @@ export default function Options() {
                 {/* ─── ADVANCED PAGE ──────────────────────── */}
                 {activeTab === 'advanced' && (
                     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+
+                        {/* Context-Aware Grouping (Non-LLM fast path) */}
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Eye className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Context Grouping</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-4">
+                                Tabs join their opener's group automatically as you work — no AI call needed. Press <kbd className="px-1.5 py-0.5 rounded text-xs" style={{ background: 'var(--accent-soft)' }}>Alt+G</kbd> to group highlighted tabs (Cmd/Shift-click to multi-select first).
+                            </p>
+                            <div className="grid grid-cols-1 gap-3">
+                                {([
+                                    { key: 'contextInheritance' as const, label: 'Inherit opener\'s group', desc: 'New tabs opened from a link or "open in new tab" join the parent\'s group' },
+                                    { key: 'activeTabFallback' as const, label: 'Cmd/Ctrl+T fallback', desc: 'Fresh new tabs inherit from the previously-active tab\'s group' },
+                                    { key: 'focusActiveGroup' as const, label: 'Focus active group', desc: 'Auto-collapse other groups when you switch tabs (intrusive — opt in)' },
+                                    { key: 'manualShortcut' as const, label: 'Alt+G shortcut', desc: 'Group selected tabs into a new group named after their dominant domain' },
+                                    { key: 'includeIncognito' as const, label: 'Include incognito', desc: 'Apply context grouping in incognito windows' },
+                                ]).map(item => (
+                                    <label key={item.key} className="flex items-start gap-3 p-4 rounded-xl border border-glass cursor-pointer hover:bg-glass transition-all">
+                                        <input
+                                            type="checkbox"
+                                            checked={contextConfig[item.key]}
+                                            onChange={(e) => handleContextConfigChange(item.key, e.target.checked)}
+                                            className="w-4 h-4 rounded mt-0.5"
+                                        />
+                                        <div>
+                                            <span className="font-medium text-sm">{item.label}</span>
+                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Popup Tab Visibility */}
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Eye className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Popup Tabs</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-4">Choose which tabs to show in the extension popup. At least one must be visible.</p>
+                            <div className="grid grid-cols-2 gap-3">
+                                {([
+                                    { key: 'showOrganize' as const, label: 'Organize', desc: 'AI tab grouping' },
+                                    { key: 'showTools' as const, label: 'Tools', desc: 'Duplicates, collapse, undo, ungroup' },
+                                    { key: 'showLearn' as const, label: 'Learn', desc: 'Correction learning' },
+                                    { key: 'showWorkspaces' as const, label: 'Spaces', desc: 'Save & restore workspaces' },
+                                    { key: 'showRules' as const, label: 'Rules', desc: 'Domain → group rules' },
+                                ]).map(item => (
+                                    <label key={item.key} className="flex items-start gap-3 p-4 rounded-xl border border-glass cursor-pointer hover:bg-glass transition-all">
+                                        <input
+                                            type="checkbox"
+                                            checked={popupSettings[item.key]}
+                                            onChange={(e) => handlePopupSettingChange(item.key, e.target.checked)}
+                                            className="w-4 h-4 rounded mt-0.5"
+                                        />
+                                        <div>
+                                            <span className="font-medium text-sm">{item.label}</span>
+                                            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{item.desc}</p>
+                                        </div>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Templates */}
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <Download className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Templates</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-6">
+                                Export your SOUL, rules, and group settings as a shareable template. Import templates from others.
+                            </p>
+
+                            {templateStatus && (
+                                <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-medium" style={{
+                                    background: templateStatus.startsWith('Invalid') ? 'var(--danger-bg)' : 'var(--success-bg)',
+                                    color: templateStatus.startsWith('Invalid') ? 'var(--danger)' : 'var(--success)',
+                                }}>
+                                    <CheckCircle className="w-4 h-4" />
+                                    {templateStatus}
+                                </div>
+                            )}
+
+                            {/* Import preview */}
+                            {importPreview && (
+                                <div className="mb-6 p-5 rounded-xl border border-glass" style={{ background: 'var(--accent-soft)' }}>
+                                    <h3 className="font-semibold text-sm mb-3">Import: {importPreview.name}</h3>
+                                    <div className="flex flex-col gap-1 text-xs mb-4" style={{ color: 'var(--text-secondary)' }}>
+                                        <p>{importPreview.rules.length} rules · {importPreview.groupConfigs.length} groups{importPreview.learnedPatterns ? ` · ${Object.keys(importPreview.learnedPatterns).length} patterns` : ''}</p>
+                                        <p>SOUL: {importPreview.soul.substring(0, 120)}...</p>
+                                        {importPreview.exportedAt && (
+                                            <p style={{ color: 'var(--text-muted)' }}>Exported {new Date(importPreview.exportedAt).toLocaleDateString()}</p>
+                                        )}
+                                    </div>
+
+                                    <div className="flex items-center gap-4 mb-4">
+                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input type="radio" checked={importMode === 'merge'} onChange={() => setImportMode('merge')} className="w-4 h-4" />
+                                            Merge with existing
+                                        </label>
+                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input type="radio" checked={importMode === 'replace'} onChange={() => setImportMode('replace')} className="w-4 h-4" />
+                                            Replace existing
+                                        </label>
+                                    </div>
+
+                                    <div className="flex gap-2">
+                                        <button onClick={handleImportTemplate} className="btn-primary px-5 py-2.5 rounded-xl text-xs font-medium">
+                                            Import Template
+                                        </button>
+                                        <button onClick={() => setImportPreview(null)} className="btn-ghost px-4 py-2.5 rounded-xl text-xs">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {/* Export */}
+                                <div className="p-5 rounded-xl border border-glass">
+                                    <h3 className="font-medium text-sm mb-3">Export</h3>
+                                    <input
+                                        type="text"
+                                        value={templateName}
+                                        onChange={(e) => setTemplateName(e.target.value)}
+                                        placeholder="Template name (e.g. Developer Setup)"
+                                        className="themed-input w-full px-4 py-3 rounded-xl text-sm mb-3"
+                                    />
+                                    <label className="flex items-center gap-2 mb-4 cursor-pointer text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={templateIncludePatterns}
+                                            onChange={(e) => setTemplateIncludePatterns(e.target.checked)}
+                                            className="w-4 h-4 rounded"
+                                        />
+                                        Include learned patterns
+                                    </label>
+                                    <button onClick={handleExportTemplate} className="btn-primary w-full px-4 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-2">
+                                        <Download className="w-4 h-4" /> Export as JSON
+                                    </button>
+                                </div>
+
+                                {/* Import */}
+                                <div className="p-5 rounded-xl border border-glass">
+                                    <h3 className="font-medium text-sm mb-3">Import</h3>
+                                    <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
+                                        Load a .json template file to import SOUL, rules, and group settings.
+                                    </p>
+                                    <button onClick={handleImportFile} className="btn-ghost w-full px-4 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center gap-2 border border-glass">
+                                        <Upload className="w-4 h-4" /> Choose Template File
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Sync */}
+                        <div className="glass-card rounded-2xl p-8">
+                            <div className="flex items-center gap-3 mb-6">
+                                <RefreshCw className="w-5 h-5" style={{ color: 'var(--text-tertiary)' }} />
+                                <h2 className="text-xl font-semibold tracking-tight">Cross-Device Sync</h2>
+                            </div>
+                            <p className="text-sm text-text-secondary mb-6">
+                                Sync your SOUL, rules, and group settings across devices using Chrome Sync. Workspaces stay local.
+                            </p>
+
+                            {syncStatus && (
+                                <div className="mb-4 flex items-center gap-2 px-4 py-3 rounded-xl text-xs font-medium" style={{
+                                    background: syncStatus.startsWith('Error') ? 'var(--danger-bg)' : 'var(--success-bg)',
+                                    color: syncStatus.startsWith('Error') ? 'var(--danger)' : 'var(--success)',
+                                }}>
+                                    <CheckCircle className="w-4 h-4" />
+                                    {syncStatus}
+                                </div>
+                            )}
+
+                            <label className="flex items-center justify-between p-4 rounded-xl border border-glass mb-4 cursor-pointer hover:bg-glass transition-all">
+                                <div>
+                                    <span className="font-medium text-sm">Enable sync</span>
+                                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                                        Automatically sync settings when you change them
+                                    </p>
+                                </div>
+                                <input
+                                    type="checkbox"
+                                    checked={syncConfig.enabled}
+                                    onChange={(e) => handleSyncConfigChange({ enabled: e.target.checked })}
+                                    className="w-5 h-5 rounded"
+                                />
+                            </label>
+
+                            {syncConfig.enabled && (
+                                <div className="flex flex-col gap-3">
+                                    <div className="grid grid-cols-3 gap-3">
+                                        {([
+                                            { key: 'syncSoul' as const, label: 'SOUL' },
+                                            { key: 'syncRules' as const, label: 'Rules' },
+                                            { key: 'syncGroups' as const, label: 'Groups' },
+                                        ]).map(item => (
+                                            <label key={item.key} className="flex items-center gap-2 p-3 rounded-xl border border-glass cursor-pointer hover:bg-glass transition-all text-sm">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={syncConfig[item.key]}
+                                                    onChange={(e) => handleSyncConfigChange({ [item.key]: e.target.checked })}
+                                                    className="w-4 h-4 rounded"
+                                                />
+                                                {item.label}
+                                            </label>
+                                        ))}
+                                    </div>
+
+                                    <div className="flex items-center justify-between mt-2">
+                                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                                            {syncConfig.lastSyncedAt
+                                                ? `Last synced: ${new Date(syncConfig.lastSyncedAt).toLocaleString()}`
+                                                : 'Never synced'}
+                                        </p>
+                                        <button
+                                            onClick={handleSyncNow}
+                                            disabled={syncing}
+                                            className="btn-primary px-5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2 disabled:opacity-40"
+                                        >
+                                            <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+                                            {syncing ? 'Syncing...' : 'Sync Now'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
                         <div className="glass-card rounded-2xl p-8">
                             <div className="flex items-center justify-between mb-6">
                                 <div className="flex items-center gap-3">

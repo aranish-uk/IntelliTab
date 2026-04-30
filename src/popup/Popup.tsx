@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Sparkles, Save, CheckCircle2, Settings, FolderOpen, ChevronDown, ChevronRight, Trash2, RotateCcw, Archive, AlertCircle, ThumbsUp, ArrowRight } from 'lucide-react';
-import { AIResponse, Workspace, CorrectionDiff } from '../types';
+import { useState, useEffect, useCallback } from 'react';
+import { Sparkles, Save, CheckCircle2, Settings, FolderOpen, ChevronDown, ChevronRight, Trash2, RotateCcw, Archive, AlertCircle, ThumbsUp, ArrowRight, Undo2, Copy, ChevronsDownUp, ChevronsUpDown, X, Wrench, Clock, Globe } from 'lucide-react';
+import { AIResponse, Workspace, CorrectionDiff, TabStats, DuplicateGroup, PopupSettings, DEFAULT_POPUP_SETTINGS, TabActivity, WorkspaceSuggestion } from '../types';
 
 export default function Popup() {
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [result, setResult] = useState<AIResponse | null>(null);
-    const [activeTab, setActiveTab] = useState<'organize' | 'learn' | 'workspaces' | 'rules'>('organize');
+    const [activeTab, setActiveTab] = useState<'organize' | 'tools' | 'learn' | 'workspaces' | 'rules'>('organize');
     const [rulesSource, setRulesSource] = useState('[]');
     const [saveStatus, setSaveStatus] = useState('');
     const [ungroupedOnly, setUngroupedOnly] = useState(false);
@@ -31,13 +31,51 @@ export default function Popup() {
     const [learnError, setLearnError] = useState('');
 
     // Learn state ("this is how I like it" — from current state)
-    const [likeItLoading, setLikeItLoading] = useState(false);
     const [likeItResult, setLikeItResult] = useState<{
         groupsLearned: number;
         patternsLearned: number;
         groupNames: string[];
     } | null>(null);
     const [likeItError, setLikeItError] = useState('');
+
+    // Sprint 1: Session stats
+    const [stats, setStats] = useState<TabStats | null>(null);
+
+    // Sprint 1: Undo
+    const [canUndo, setCanUndo] = useState(false);
+    const [undoLoading, setUndoLoading] = useState(false);
+
+    // Sprint 1: Duplicate detection
+    const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
+    const [dupeDismissed, setDupeDismissed] = useState(false);
+    const [dupeClosing, setDupeClosing] = useState(false);
+
+    // Sprint 1: API key state
+    const [hasApiKey, setHasApiKey] = useState(true);
+
+    // Feature 1: Auto-organize status
+    const [autoOrganizeEnabled, setAutoOrganizeEnabled] = useState(false);
+
+    // Feature 2: Stale tabs
+    const [staleTabs, setStaleTabs] = useState<TabActivity[]>([]);
+
+    // Feature 3: Workspace preview
+    const [previewWs, setPreviewWs] = useState<string | null>(null);
+
+    // Feature 5: Workspace suggestions
+    const [suggestions, setSuggestions] = useState<WorkspaceSuggestion[]>([]);
+    const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+    const [staleLoading, setStaleLoading] = useState(false);
+    const [staleDismissed, setStaleDismissed] = useState(false);
+
+    // Sprint 1: Popup tab visibility settings
+    const [popupSettings, setPopupSettings] = useState<PopupSettings>(DEFAULT_POPUP_SETTINGS);
+
+    const refreshStats = useCallback(() => {
+        chrome.runtime.sendMessage({ action: 'getTabStats' }, (response) => {
+            if (response && !response.error) setStats(response);
+        });
+    }, []);
 
     useEffect(() => {
         chrome.storage.local.get(['rules'], (data) => {
@@ -47,12 +85,40 @@ export default function Popup() {
         });
         loadWorkspaces();
         checkRecovery();
-    }, []);
+        refreshStats();
+
+        // Check if API key is configured
+        chrome.runtime.sendMessage({ action: 'checkApiKey' }, (response) => {
+            if (response) setHasApiKey(response.hasApiKey);
+        });
+
+        // Check if undo is available
+        chrome.storage.local.get(['lastAction'], (data) => {
+            setCanUndo(!!(data.lastAction && data.lastAction.urlToGroup));
+        });
+
+        // Load popup settings
+        chrome.runtime.sendMessage({ action: 'getPopupSettings' }, (response) => {
+            if (response && !response.error) setPopupSettings(response);
+        });
+
+        // Check auto-organize status
+        chrome.runtime.sendMessage({ action: 'getAutoOrganizeStatus' }, (response) => {
+            if (response) setAutoOrganizeEnabled(response.enabled);
+        });
+    }, [refreshStats]);
 
     const loadWorkspaces = () => {
         chrome.runtime.sendMessage({ action: 'getWorkspaces' }, (response) => {
             if (response && response.workspaces) {
                 setWorkspaces(response.workspaces);
+            }
+        });
+        // Also check for workspace suggestions
+        chrome.runtime.sendMessage({ action: 'getWorkspaceSuggestions' }, (response) => {
+            if (response?.suggestions && response.suggestions.length > 0) {
+                setSuggestions(response.suggestions);
+                setSuggestionDismissed(false);
             }
         });
     };
@@ -97,6 +163,8 @@ export default function Popup() {
                 setError(response.error);
             } else {
                 setResult(null);
+                setCanUndo(true);
+                refreshStats();
             }
         });
     };
@@ -197,6 +265,89 @@ export default function Popup() {
         });
     };
 
+    // Sprint 1: Undo last grouping
+    const handleUndo = () => {
+        setUndoLoading(true);
+        chrome.runtime.sendMessage({ action: 'undoLastGrouping' }, (response) => {
+            setUndoLoading(false);
+            if (response?.error) {
+                setError(response.error);
+            } else {
+                setCanUndo(false);
+                refreshStats();
+            }
+        });
+    };
+
+    // Sprint 1: Detect duplicates
+    const handleDetectDuplicates = () => {
+        setDupeDismissed(false);
+        chrome.runtime.sendMessage({ action: 'detectDuplicates' }, (response) => {
+            if (response?.duplicates) {
+                setDuplicates(response.duplicates);
+            }
+        });
+    };
+
+    // Sprint 1: Close all duplicate tabs (keeps one of each)
+    const handleCloseDuplicates = () => {
+        const idsToClose: number[] = [];
+        for (const dupe of duplicates) {
+            // Keep the first tab, close the rest
+            idsToClose.push(...dupe.tabIds.slice(1));
+        }
+        if (idsToClose.length === 0) return;
+        setDupeClosing(true);
+        chrome.runtime.sendMessage({ action: 'closeDuplicates', tabIds: idsToClose }, (response) => {
+            setDupeClosing(false);
+            if (!response?.error) {
+                setDuplicates([]);
+                refreshStats();
+            }
+        });
+    };
+
+    // Sprint 1: Collapse / Expand all groups
+    const handleCollapseAll = () => {
+        chrome.runtime.sendMessage({ action: 'collapseAllGroups' });
+    };
+    const handleExpandAll = () => {
+        chrome.runtime.sendMessage({ action: 'expandAllGroups' });
+    };
+
+    // Feature 2: Stale tab actions
+    const handleFindStaleTabs = () => {
+        setStaleDismissed(false);
+        setStaleLoading(true);
+        chrome.runtime.sendMessage({ action: 'getStaleTabs' }, (response) => {
+            setStaleLoading(false);
+            if (response?.staleTabs) setStaleTabs(response.staleTabs);
+        });
+    };
+
+    const handleArchiveStale = () => {
+        setStaleLoading(true);
+        chrome.runtime.sendMessage({ action: 'archiveStaleTabs' }, (response) => {
+            setStaleLoading(false);
+            if (!response?.error) {
+                setStaleTabs([]);
+                refreshStats();
+            }
+        });
+    };
+
+    const handleCloseStale = () => {
+        const tabIds = staleTabs.map(t => t.tabId);
+        setStaleLoading(true);
+        chrome.runtime.sendMessage({ action: 'closeStaleTabs', tabIds }, (response) => {
+            setStaleLoading(false);
+            if (!response?.error) {
+                setStaleTabs([]);
+                refreshStats();
+            }
+        });
+    };
+
     const handleDismissRecovery = () => {
         chrome.runtime.sendMessage({ action: 'dismissRecovery' });
         setRecoveryAvailable(false);
@@ -209,26 +360,54 @@ export default function Popup() {
 
     return (
         <div className="flex flex-col h-full" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            {/* Header */}
-            <header className="px-5 py-4 flex justify-between items-center" style={{ borderBottom: '1px solid var(--border-glass)' }}>
-                <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
-                    IntelliTab
-                </h1>
-                <button
-                    onClick={openOptions}
-                    className="p-2 rounded-lg transition-all"
-                    style={{ color: 'var(--text-tertiary)' }}
-                    title="Settings"
-                >
-                    <Settings className="w-4 h-4" />
-                </button>
+            {/* Header with stats */}
+            <header className="px-5 py-3 flex flex-col gap-1" style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                <div className="flex justify-between items-center">
+                    <h1 className="text-lg font-semibold tracking-tight flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" style={{ color: 'var(--text-tertiary)' }} />
+                        IntelliTab
+                    </h1>
+                    <button
+                        onClick={openOptions}
+                        className="p-2 rounded-lg transition-all"
+                        style={{ color: 'var(--text-tertiary)' }}
+                        title="Settings"
+                    >
+                        <Settings className="w-4 h-4" />
+                    </button>
+                </div>
+                {stats && (
+                    <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                        <span>{stats.total} tabs</span>
+                        <span style={{ color: 'var(--border-glass)' }}>·</span>
+                        <span>{stats.groups} groups</span>
+                        <span style={{ color: 'var(--border-glass)' }}>·</span>
+                        <span>{stats.ungrouped} ungrouped</span>
+                        {stats.pinned > 0 && (
+                            <>
+                                <span style={{ color: 'var(--border-glass)' }}>·</span>
+                                <span>{stats.pinned} pinned</span>
+                            </>
+                        )}
+                        {autoOrganizeEnabled && (
+                            <>
+                                <span style={{ color: 'var(--border-glass)' }}>·</span>
+                                <span style={{ color: 'var(--success)' }}>Auto</span>
+                            </>
+                        )}
+                    </div>
+                )}
             </header>
 
             {/* Tab Switcher */}
             <div className="flex px-5 gap-1 pt-2" style={{ borderBottom: '1px solid var(--border-glass)' }}>
-                {(['organize', 'learn', 'workspaces', 'rules'] as const).map(tab => {
-                    const labels: Record<string, string> = { organize: 'Organize', learn: 'Learn', workspaces: 'Spaces', rules: 'Rules' };
+                {(['organize', 'tools', 'learn', 'workspaces', 'rules'] as const)
+                    .filter(tab => {
+                        const key = `show${tab.charAt(0).toUpperCase() + tab.slice(1)}` as keyof PopupSettings;
+                        return popupSettings[key];
+                    })
+                    .map(tab => {
+                    const labels: Record<string, string> = { organize: 'Organize', tools: 'Tools', learn: 'Learn', workspaces: 'Spaces', rules: 'Rules' };
                     return (
                         <button
                             key={tab}
@@ -256,6 +435,19 @@ export default function Popup() {
                                 <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{ background: 'var(--accent-soft)' }}>
                                     <Sparkles className="w-7 h-7" style={{ color: 'var(--text-tertiary)' }} />
                                 </div>
+
+                                {/* No API key warning */}
+                                {!hasApiKey && (
+                                    <div className="w-full p-3 rounded-xl text-xs text-left" style={{ background: 'var(--danger-bg)', border: '1px solid var(--border-glass)' }}>
+                                        <p className="font-medium" style={{ color: 'var(--danger)' }}>No API key configured</p>
+                                        <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
+                                            Set up an AI provider in{' '}
+                                            <button onClick={openOptions} className="underline" style={{ color: 'var(--danger)' }}>Settings</button>
+                                            {' '}to use AI tab organization.
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div>
                                     <h2 className="text-base font-semibold">Ready to organize?</h2>
                                     <p className="text-xs mt-1 max-w-[240px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
@@ -263,34 +455,29 @@ export default function Popup() {
                                     </p>
                                 </div>
 
-                                <label className="flex items-center justify-center gap-2 mt-2 mb-1 px-1 cursor-pointer">
-                                    <input
-                                        type="checkbox"
-                                        checked={ungroupedOnly}
-                                        onChange={(e) => setUngroupedOnly(e.target.checked)}
-                                        className="w-3.5 h-3.5 rounded-sm border-gray-400 bg-transparent"
-                                    />
-                                    <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                                        Only organize ungrouped tabs
-                                    </span>
-                                </label>
+                                {hasApiKey && (
+                                    <>
+                                        <label className="flex items-center justify-center gap-2 mt-2 mb-1 px-1 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                checked={ungroupedOnly}
+                                                onChange={(e) => setUngroupedOnly(e.target.checked)}
+                                                className="w-3.5 h-3.5 rounded-sm border-gray-400 bg-transparent"
+                                            />
+                                            <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+                                                Only organize ungrouped tabs
+                                            </span>
+                                        </label>
 
-                                <div className="flex flex-col gap-2 w-full">
-                                    <button
-                                        onClick={analyzeTabs}
-                                        className="btn-primary w-full py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2"
-                                    >
-                                        <Sparkles className="w-4 h-4" />
-                                        Analyze Tabs
-                                    </button>
-
-                                    <button
-                                        onClick={() => chrome.runtime.sendMessage({ action: 'ungroupAll' })}
-                                        className="btn-ghost w-full py-2 px-4 rounded-xl text-xs flex items-center justify-center gap-1"
-                                    >
-                                        Ungroup All
-                                    </button>
-                                </div>
+                                        <button
+                                            onClick={analyzeTabs}
+                                            className="btn-primary w-full py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2"
+                                        >
+                                            <Sparkles className="w-4 h-4" />
+                                            Analyze Tabs
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         )}
 
@@ -323,14 +510,41 @@ export default function Popup() {
                                         <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>No logical groups found.</p>
                                     ) : (
                                         <ul className="flex flex-col gap-1.5 mb-4">
-                                            {result.groups.map((g, i) => (
-                                                <li key={i} className="flex justify-between items-center p-2.5 px-3 rounded-lg" style={{ background: 'var(--accent-soft)' }}>
-                                                    <span className="font-medium text-xs">{g.groupName}</span>
-                                                    <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)' }}>
-                                                        {g.tabIds.length}
-                                                    </span>
-                                                </li>
-                                            ))}
+                                            {result.groups.map((g, i) => {
+                                                // Confidence dot: green ≥ 0.7, yellow ≥ 0.5, red < 0.5
+                                                const conf = (g as any).confidence as number | undefined;
+                                                const source = (g as any).source as string | undefined;
+                                                const dotColor = conf === undefined ? null
+                                                    : conf >= 0.7 ? '#34a853'
+                                                    : conf >= 0.5 ? '#fbbc04'
+                                                    : '#ea4335';
+                                                const sourceLabel = source === 'rule' ? 'Rule'
+                                                    : source === 'pattern' ? 'Learned'
+                                                    : source === 'llm-allowed' ? 'AI · known'
+                                                    : source === 'llm-new' ? 'AI · new'
+                                                    : source === 'fallback' ? 'Fallback'
+                                                    : '';
+                                                return (
+                                                    <li key={i} className="flex justify-between items-center p-2.5 px-3 rounded-lg" style={{ background: 'var(--accent-soft)' }}>
+                                                        <span className="flex items-center gap-2 font-medium text-xs">
+                                                            {dotColor && (
+                                                                <span
+                                                                    className="inline-block w-1.5 h-1.5 rounded-full"
+                                                                    style={{ background: dotColor }}
+                                                                    title={sourceLabel ? `${sourceLabel} · ${(conf! * 100).toFixed(0)}%` : ''}
+                                                                />
+                                                            )}
+                                                            {g.groupName}
+                                                            {sourceLabel && (
+                                                                <span className="text-[10px] opacity-60">{sourceLabel}</span>
+                                                            )}
+                                                        </span>
+                                                        <span className="text-xs px-2 py-0.5 rounded-full" style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)' }}>
+                                                            {g.tabIds.length}
+                                                        </span>
+                                                    </li>
+                                                );
+                                            })}
                                         </ul>
                                     )}
                                     {result.groups.length > 0 && (
@@ -354,6 +568,174 @@ export default function Popup() {
                     </div>
                 )}
 
+                {/* ── TOOLS TAB ── */}
+                {activeTab === 'tools' && (
+                    <div className="w-full flex-1 flex flex-col">
+                        <div className="my-auto flex flex-col items-center gap-4">
+                            <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: 'var(--accent-soft)' }}>
+                                <Wrench className="w-6 h-6" style={{ color: 'var(--text-tertiary)' }} />
+                            </div>
+
+                            <div className="flex flex-col gap-2 w-full">
+                                {/* Duplicate detection */}
+                                <button
+                                    onClick={handleDetectDuplicates}
+                                    className="btn-ghost w-full py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5"
+                                >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    Find Duplicate Tabs
+                                </button>
+
+                                {/* Collapse / Expand all */}
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={handleCollapseAll}
+                                        className="btn-ghost flex-1 py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1"
+                                    >
+                                        <ChevronsDownUp className="w-3.5 h-3.5" />
+                                        Collapse All
+                                    </button>
+                                    <button
+                                        onClick={handleExpandAll}
+                                        className="btn-ghost flex-1 py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1"
+                                    >
+                                        <ChevronsUpDown className="w-3.5 h-3.5" />
+                                        Expand All
+                                    </button>
+                                </div>
+
+                                {/* Undo last grouping */}
+                                {canUndo && (
+                                    <button
+                                        onClick={handleUndo}
+                                        disabled={undoLoading}
+                                        className="btn-ghost w-full py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                    >
+                                        <Undo2 className="w-3.5 h-3.5" />
+                                        {undoLoading ? 'Undoing...' : 'Undo Last Grouping'}
+                                    </button>
+                                )}
+
+                                {/* Stale tab detection */}
+                                <button
+                                    onClick={handleFindStaleTabs}
+                                    disabled={staleLoading}
+                                    className="btn-ghost w-full py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                >
+                                    <Clock className="w-3.5 h-3.5" />
+                                    {staleLoading ? 'Checking...' : 'Find Stale Tabs'}
+                                </button>
+
+                                {/* Ungroup all */}
+                                <button
+                                    onClick={() => { chrome.runtime.sendMessage({ action: 'ungroupAll' }); refreshStats(); }}
+                                    className="btn-ghost w-full py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-1"
+                                >
+                                    Ungroup All
+                                </button>
+                            </div>
+
+                            {/* Stale tab results */}
+                            {staleTabs.length > 0 && !staleDismissed && (
+                                <div className="w-full glass-card rounded-xl p-4 text-left">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                                            <Clock className="w-3 h-3" />
+                                            {staleTabs.length} STALE TAB{staleTabs.length > 1 ? 'S' : ''}
+                                        </h4>
+                                        <button onClick={() => setStaleDismissed(true)} className="p-0.5 rounded" style={{ color: 'var(--text-muted)' }}>
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <ul className="flex flex-col gap-1.5 mb-3">
+                                        {staleTabs.slice(0, 8).map((t, i) => {
+                                            const hoursAgo = Math.round((Date.now() - t.lastActive) / (1000 * 60 * 60));
+                                            return (
+                                                <li key={i} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ background: 'var(--accent-soft)' }}>
+                                                    <span className="flex-1 truncate" title={t.url}>{t.title || t.domain}</span>
+                                                    <span className="flex-shrink-0 text-xs" style={{ color: 'var(--text-muted)' }}>
+                                                        {hoursAgo}h ago
+                                                    </span>
+                                                </li>
+                                            );
+                                        })}
+                                        {staleTabs.length > 8 && (
+                                            <li className="text-xs" style={{ color: 'var(--text-muted)' }}>+ {staleTabs.length - 8} more</li>
+                                        )}
+                                    </ul>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleArchiveStale}
+                                            disabled={staleLoading}
+                                            className="btn-primary flex-1 py-2 rounded-lg text-xs disabled:opacity-40"
+                                        >
+                                            <Archive className="w-3 h-3 inline mr-1" />
+                                            Archive
+                                        </button>
+                                        <button
+                                            onClick={handleCloseStale}
+                                            disabled={staleLoading}
+                                            className="btn-ghost flex-1 py-2 rounded-lg text-xs disabled:opacity-40"
+                                            style={{ color: 'var(--danger)' }}
+                                        >
+                                            Close All
+                                        </button>
+                                        <button
+                                            onClick={() => { setStaleTabs([]); setStaleDismissed(true); }}
+                                            className="btn-ghost px-3 py-2 rounded-lg text-xs"
+                                        >
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Duplicate results */}
+                            {duplicates.length > 0 && !dupeDismissed && (
+                                <div className="w-full glass-card rounded-xl p-4 text-left">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h4 className="text-xs font-semibold flex items-center gap-1.5" style={{ color: 'var(--text-tertiary)' }}>
+                                            <Copy className="w-3 h-3" />
+                                            {duplicates.length} DUPLICATE{duplicates.length > 1 ? 'S' : ''} FOUND
+                                        </h4>
+                                        <button onClick={() => setDupeDismissed(true)} className="p-0.5 rounded" style={{ color: 'var(--text-muted)' }}>
+                                            <X className="w-3 h-3" />
+                                        </button>
+                                    </div>
+                                    <ul className="flex flex-col gap-1.5 mb-3">
+                                        {duplicates.slice(0, 8).map((d, i) => (
+                                            <li key={i} className="flex items-center gap-2 p-2 rounded-lg text-xs" style={{ background: 'var(--accent-soft)' }}>
+                                                <span className="flex-1 truncate" title={d.url}>{d.title || d.domain}</span>
+                                                <span className="flex-shrink-0 px-1.5 py-0.5 rounded-full text-xs" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+                                                    x{d.count}
+                                                </span>
+                                            </li>
+                                        ))}
+                                        {duplicates.length > 8 && (
+                                            <li className="text-xs" style={{ color: 'var(--text-muted)' }}>+ {duplicates.length - 8} more</li>
+                                        )}
+                                    </ul>
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={handleCloseDuplicates}
+                                            disabled={dupeClosing}
+                                            className="btn-primary flex-1 py-2 rounded-lg text-xs disabled:opacity-40"
+                                        >
+                                            {dupeClosing ? 'Closing...' : `Close ${duplicates.reduce((a, d) => a + d.count - 1, 0)} duplicates`}
+                                        </button>
+                                        <button
+                                            onClick={() => { setDuplicates([]); setDupeDismissed(true); }}
+                                            className="btn-ghost px-3 py-2 rounded-lg text-xs"
+                                        >
+                                            Dismiss
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                )}
+
                 {/* ── LEARN TAB ── */}
                 {activeTab === 'learn' && (
                     <div className="w-full flex-1 flex flex-col">
@@ -365,110 +747,84 @@ export default function Popup() {
                                 <div>
                                     <h2 className="text-base font-semibold">This is how I like it</h2>
                                     <p className="text-xs mt-1 max-w-[260px] leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                                        After AI organizes your tabs, make any corrections you want, then click below. IntelliTab will learn from your changes.
+                                        {canUndo
+                                            ? 'Made corrections to the AI grouping? Hit the button and IntelliTab will learn from your changes.'
+                                            : 'Organized your tabs how you like them? Hit the button and IntelliTab will learn your preferences.'}
                                     </p>
                                 </div>
 
-                                {/* Error shown inline above button */}
-                                {learnError && (
+                                {/* Unified error */}
+                                {(learnError || likeItError) && (
                                     <div className="w-full p-3 rounded-xl text-xs text-left" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--border-glass)' }}>
-                                        <strong>Error:</strong> {learnError}
+                                        <strong>Error:</strong> {learnError || likeItError}
                                     </div>
                                 )}
 
                                 <div className="w-full flex flex-col gap-2">
                                     <button
                                         onClick={() => {
-                                            setLearnLoading(true);
-                                            setLearnError('');
-                                            setLearnResult(null);
-                                            chrome.runtime.sendMessage({ action: 'learnFromCorrections' }, (response) => {
-                                                setLearnLoading(false);
-                                                if (chrome.runtime.lastError) {
-                                                    setLearnError(`Service worker error: ${chrome.runtime.lastError.message}. Try again.`);
-                                                    return;
-                                                }
-                                                if (!response) {
-                                                    setLearnError('No response from background. The extension may need reloading.');
-                                                    return;
-                                                }
-                                                if (response.error) {
-                                                    setLearnError(response.error);
-                                                    return;
-                                                }
-                                                if (response.diff) {
-                                                    setLearnResult(response);
-                                                } else {
-                                                    setLearnError('Unexpected response format. Please try again.');
-                                                }
-                                            });
+                                            if (canUndo) {
+                                                // Recent AI grouping exists — learn from corrections
+                                                setLearnLoading(true);
+                                                setLearnError('');
+                                                setLikeItError('');
+                                                setLearnResult(null);
+                                                chrome.runtime.sendMessage({ action: 'learnFromCorrections' }, (response) => {
+                                                    setLearnLoading(false);
+                                                    if (chrome.runtime.lastError) {
+                                                        setLearnError(`Service worker error: ${chrome.runtime.lastError.message}. Try again.`);
+                                                        return;
+                                                    }
+                                                    if (!response) {
+                                                        setLearnError('No response from background. The extension may need reloading.');
+                                                        return;
+                                                    }
+                                                    if (response.error) {
+                                                        setLearnError(response.error);
+                                                        return;
+                                                    }
+                                                    if (response.diff) {
+                                                        setLearnResult(response);
+                                                    } else {
+                                                        setLearnError('Unexpected response format. Please try again.');
+                                                    }
+                                                });
+                                            } else {
+                                                // No recent AI action — learn from current state
+                                                setLearnLoading(true);
+                                                setLearnError('');
+                                                setLikeItError('');
+                                                setLikeItResult(null);
+                                                chrome.runtime.sendMessage({ action: 'learnFromCurrentState' }, (response) => {
+                                                    setLearnLoading(false);
+                                                    if (chrome.runtime.lastError) {
+                                                        setLikeItError(`Service worker error: ${chrome.runtime.lastError.message}. Try again.`);
+                                                        return;
+                                                    }
+                                                    if (!response) {
+                                                        setLikeItError('No response from background. The extension may need reloading.');
+                                                        return;
+                                                    }
+                                                    if (response.error) {
+                                                        setLikeItError(response.error);
+                                                        return;
+                                                    }
+                                                    setLikeItResult(response);
+                                                });
+                                            }
                                         }}
-                                        className="btn-primary w-full py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2"
+                                        disabled={learnLoading}
+                                        className="btn-primary w-full py-3 px-4 rounded-xl text-sm flex items-center justify-center gap-2 disabled:opacity-40"
                                     >
                                         <ThumbsUp className="w-4 h-4" />
-                                        Learn from my corrections
-                                    </button>
-
-                                    <p className="text-xs text-center mt-1" style={{ color: 'var(--text-muted)' }}>
-                                        Compares your current tabs to the last AI grouping
-                                    </p>
-
-                                    {/* Divider */}
-                                    <div className="flex items-center gap-3 my-1">
-                                        <div className="flex-1 h-px" style={{ background: 'var(--border-glass)' }} />
-                                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>or</span>
-                                        <div className="flex-1 h-px" style={{ background: 'var(--border-glass)' }} />
-                                    </div>
-
-                                    {/* "This is how I like it" — learn from current groups directly */}
-                                    <button
-                                        onClick={() => {
-                                            setLikeItLoading(true);
-                                            setLikeItError('');
-                                            setLikeItResult(null);
-                                            chrome.runtime.sendMessage({ action: 'learnFromCurrentState' }, (response) => {
-                                                setLikeItLoading(false);
-                                                if (chrome.runtime.lastError) {
-                                                    setLikeItError(`Service worker error: ${chrome.runtime.lastError.message}. Try again.`);
-                                                    return;
-                                                }
-                                                if (!response) {
-                                                    setLikeItError('No response from background. The extension may need reloading.');
-                                                    return;
-                                                }
-                                                if (response.error) {
-                                                    setLikeItError(response.error);
-                                                    return;
-                                                }
-                                                setLikeItResult(response);
-                                            });
-                                        }}
-                                        disabled={likeItLoading}
-                                        className="btn-ghost w-full py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 disabled:opacity-40"
-                                    >
-                                        {likeItLoading ? (
-                                            <>
-                                                <div className="w-3 h-3 rounded-full animate-spin" style={{ border: '2px solid var(--spinner-track)', borderTopColor: 'var(--spinner-fill)' }} />
-                                                Learning...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <CheckCircle2 className="w-3.5 h-3.5" />
-                                                This is how I like my tabs
-                                            </>
-                                        )}
+                                        {canUndo ? 'Learn from my corrections' : 'This is how I like my tabs'}
                                     </button>
 
                                     <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-                                        Learns from your current groups — no AI run needed
+                                        {canUndo
+                                            ? 'Compares your current tabs to the last AI grouping'
+                                            : 'Learns from your current groups — no AI run needed'}
                                     </p>
-
-                                    {/* Like-it error */}
-                                    {likeItError && (
-                                        <div className="w-full p-2.5 rounded-lg text-xs" style={{ background: 'var(--danger-bg)', color: 'var(--danger)', border: '1px solid var(--border-glass)' }}>
-                                            {likeItError}
-                                        </div>
-                                    )}
 
                                     {/* Like-it success */}
                                     {likeItResult && (
@@ -618,6 +974,41 @@ export default function Popup() {
                             </div>
                         )}
 
+                        {/* Workspace suggestion banner */}
+                        {suggestions.length > 0 && !suggestionDismissed && (() => {
+                            const top = suggestions[0];
+                            const pct = Math.round(top.matchScore * 100);
+                            return (
+                                <div className="p-3 rounded-xl text-xs flex items-start gap-2" style={{ background: 'var(--accent-soft)', border: '1px solid var(--border-glass)' }}>
+                                    <Sparkles className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: 'var(--text-tertiary)' }} />
+                                    <div className="flex-1">
+                                        <p className="font-medium">Your tabs look like <strong>{top.workspaceName}</strong> ({pct}% match)</p>
+                                        {top.missingUrls.length > 0 && (
+                                            <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>{top.missingUrls.length} tabs from that workspace aren't open yet.</p>
+                                        )}
+                                        <div className="flex gap-2 mt-2">
+                                            {top.missingUrls.length > 0 && (
+                                                <button
+                                                    onClick={() => {
+                                                        chrome.runtime.sendMessage({ action: 'restoreMissingTabs', urls: top.missingUrls }, () => {
+                                                            setSuggestionDismissed(true);
+                                                            refreshStats();
+                                                        });
+                                                    }}
+                                                    className="btn-primary px-3 py-1.5 rounded-lg text-xs"
+                                                >
+                                                    Open {top.missingUrls.length} Missing
+                                                </button>
+                                            )}
+                                            <button onClick={() => setSuggestionDismissed(true)} className="btn-ghost px-3 py-1.5 rounded-lg text-xs">
+                                                Dismiss
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
                         {/* Save workspace */}
                         <div className="glass-card rounded-xl p-4">
                             <h3 className="font-medium text-sm mb-3 flex items-center gap-2">
@@ -676,13 +1067,87 @@ export default function Popup() {
                             </div>
                         )}
 
-                        {/* Saved workspaces list */}
-                        {workspaces.length === 0 ? (
+                        {/* Workspace preview (replaces list when active) */}
+                        {previewWs && (() => {
+                            const ws = workspaces.find(w => w.id === previewWs);
+                            if (!ws) return null;
+                            return (
+                                <div className="glass-card rounded-xl p-4 flex flex-col gap-3">
+                                    <div className="flex items-center justify-between">
+                                        <h3 className="font-semibold text-sm truncate flex-1">{ws.name}</h3>
+                                        <button onClick={() => setPreviewWs(null)} className="p-1 rounded" style={{ color: 'var(--text-muted)' }}>
+                                            <X className="w-3.5 h-3.5" />
+                                        </button>
+                                    </div>
+
+                                    {ws.groups.map(g => (
+                                        <div key={g.id}>
+                                            {/* Group header bar with color */}
+                                            <div className="flex items-center gap-2 mb-1.5">
+                                                <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: colorDot[g.color] || colorDot.grey }} />
+                                                <span className="text-xs font-medium flex-1">{g.name}</span>
+                                                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{g.tabs.length}</span>
+                                                <button
+                                                    onClick={() => { handleRestoreGroup(ws.id, g.id); }}
+                                                    className="p-1 rounded hover:bg-glass-hover transition-all"
+                                                    title="Restore this group"
+                                                >
+                                                    <RotateCcw className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
+                                                </button>
+                                            </div>
+                                            {/* Tab chips */}
+                                            <div className="flex flex-wrap gap-1 ml-4 mb-2">
+                                                {g.tabs.map((t, ti) => (
+                                                    <div
+                                                        key={ti}
+                                                        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs max-w-[160px]"
+                                                        style={{ background: 'var(--accent-soft)' }}
+                                                        title={`${t.title}\n${t.url}`}
+                                                    >
+                                                        {t.favIconUrl ? (
+                                                            <img
+                                                                src={t.favIconUrl}
+                                                                className="w-3 h-3 rounded-sm flex-shrink-0"
+                                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                            />
+                                                        ) : (
+                                                            <Globe className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--text-muted)' }} />
+                                                        )}
+                                                        <span className="truncate">{t.title || t.domain}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="flex gap-2 mt-1">
+                                        <button
+                                            onClick={() => { handleRestoreWorkspace(ws.id); setPreviewWs(null); }}
+                                            disabled={wsLoading}
+                                            className="btn-primary flex-1 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"
+                                        >
+                                            <RotateCcw className="w-3 h-3" />
+                                            Restore All ({ws.groups.reduce((a, g) => a + g.tabs.length, 0)} tabs)
+                                        </button>
+                                        <button
+                                            onClick={() => setPreviewWs(null)}
+                                            className="btn-ghost px-3 py-2 rounded-lg text-xs"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* Saved workspaces list (hidden during preview) */}
+                        {!previewWs && workspaces.length === 0 && (
                             <div className="text-center py-8">
                                 <FolderOpen className="w-10 h-10 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
                                 <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No saved workspaces yet</p>
                             </div>
-                        ) : (
+                        )}
+                        {!previewWs && workspaces.length > 0 && (
                             <div className="flex flex-col gap-2">
                                 {workspaces.map(ws => (
                                     <div key={ws.id} className="glass-card rounded-xl overflow-hidden">
@@ -697,32 +1162,20 @@ export default function Popup() {
                                             }
                                             <span className="font-medium text-xs flex-1 truncate">{ws.name}</span>
                                             <span className="text-xs px-1.5 py-0.5 rounded-full" style={{ background: 'var(--badge-bg)', color: 'var(--badge-text)' }}>
-                                                {ws.groups.length} groups
+                                                {ws.groups.length} groups · {ws.groups.reduce((a, g) => a + g.tabs.length, 0)} tabs
                                             </span>
                                         </div>
 
-                                        {/* Expanded: show groups + actions */}
+                                        {/* Expanded: compact summary + actions */}
                                         {expandedWs === ws.id && (
                                             <div className="px-3 pb-3 flex flex-col gap-2" style={{ borderTop: '1px solid var(--border-glass)' }}>
-                                                {/* Groups list */}
-                                                <div className="flex flex-col gap-1 mt-2">
+                                                {/* Group summary chips */}
+                                                <div className="flex flex-wrap gap-1.5 mt-2">
                                                     {ws.groups.map(g => (
-                                                        <div key={g.id} className="flex items-center gap-2 p-2 rounded-lg" style={{ background: 'var(--accent-soft)' }}>
-                                                            <div
-                                                                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-                                                                style={{ background: colorDot[g.color] || colorDot.grey }}
-                                                            />
-                                                            <span className="text-xs flex-1 truncate">{g.name}</span>
-                                                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                                                                {g.tabs.length}
-                                                            </span>
-                                                            <button
-                                                                onClick={(e) => { e.stopPropagation(); handleRestoreGroup(ws.id, g.id); }}
-                                                                className="p-1 rounded hover:bg-glass-hover transition-all"
-                                                                title="Restore this group"
-                                                            >
-                                                                <RotateCcw className="w-3 h-3" style={{ color: 'var(--text-tertiary)' }} />
-                                                            </button>
+                                                        <div key={g.id} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs" style={{ background: 'var(--accent-soft)' }}>
+                                                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: colorDot[g.color] || colorDot.grey }} />
+                                                            <span>{g.name}</span>
+                                                            <span style={{ color: 'var(--text-muted)' }}>{g.tabs.length}</span>
                                                         </div>
                                                     ))}
                                                 </div>
@@ -730,12 +1183,18 @@ export default function Popup() {
                                                 {/* Workspace actions */}
                                                 <div className="flex gap-2 mt-1">
                                                     <button
+                                                        onClick={() => setPreviewWs(ws.id)}
+                                                        className="btn-ghost flex-1 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5"
+                                                    >
+                                                        Preview
+                                                    </button>
+                                                    <button
                                                         onClick={() => handleRestoreWorkspace(ws.id)}
                                                         disabled={wsLoading}
                                                         className="btn-primary flex-1 py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 disabled:opacity-40"
                                                     >
                                                         <RotateCcw className="w-3 h-3" />
-                                                        Restore All
+                                                        Restore
                                                     </button>
                                                     <button
                                                         onClick={() => handleDeleteWorkspace(ws.id)}

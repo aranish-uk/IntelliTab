@@ -133,3 +133,38 @@ You are IntelliTab, a tab librarian. Goal: clean, scan-friendly groups. No junk 
 export const saveSoulText = async (text: string): Promise<void> => {
     await chrome.storage.local.set({ soulText: text });
 };
+
+/**
+ * Append a new correction block to SOUL while preventing unbounded growth.
+ * Keeps the base guidance (everything before the first correction block)
+ * plus the N most-recent correction blocks. Older blocks are dropped.
+ */
+export const appendSoulCorrectionBlock = async (
+    block: string,
+    keepRecent: number = 3,
+    hardCapChars: number = 4000
+): Promise<void> => {
+    const current = await getSoulText();
+    const marker = /^## Learned from User Corrections /m;
+    const parts = current.split(marker);
+    const base = parts[0].trimEnd();
+    // parts[1..] are existing correction-block bodies (without the marker prefix)
+    const existingBlocks = parts.slice(1).map(p => '## Learned from User Corrections ' + p.trim());
+    const dated = `## Learned from User Corrections (${new Date().toLocaleDateString()})\n${block.trim()}`;
+
+    const kept = [...existingBlocks, dated].slice(-keepRecent);
+    let next = `${base}\n\n${kept.join('\n\n')}`;
+    if (next.length > hardCapChars) {
+        // Drop oldest kept blocks until we fit
+        for (let n = kept.length - 1; n >= 1; n--) {
+            const trimmed = `${base}\n\n${kept.slice(-n).join('\n\n')}`;
+            if (trimmed.length <= hardCapChars) {
+                next = trimmed;
+                break;
+            }
+        }
+        if (next.length > hardCapChars) next = next.slice(0, hardCapChars);
+    }
+
+    await saveSoulText(next);
+};
